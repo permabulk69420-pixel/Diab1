@@ -17,19 +17,20 @@ Open the hosted HTTPS page in **Meta Quest Browser**, then select **Enter VR**.
 
 The Rising Sun tavern, Griswold's open forge, Pepin's house, surrounding cottages, cathedral with its offset bell tower and lower aisles, cemetery, Adria's hut, bridges, recessed streams, dirt paths, stone walls, dead trees and the rocky western boundary.
 
-Shingles, timber framing, doors, windows, stone trim, gravestones, well, carts and forge props are three-dimensional geometry. Materials are generated locally at startup; no model or texture downloads are required. Three.js 0.180.0 is loaded from jsDelivr.
+Shingles, timber framing, doors, windows, stone trim, gravestones, well, carts and forge props are three-dimensional geometry. Materials are generated locally at startup; no model or texture downloads are required. Three.js 0.180.0 is included in the published game bundle.
 
 The supplied isometric town screenshot drives the plan in src/layout.js. Its projection is reversed to place landmarks and trace paths/streams. A 160 × 160 metre world is an **estimated VR scale**, not a canonical measurement. The building elevations, unseen backs, construction details and bridge clearances are interpretations of the original sprites. This is a reference-based first pass, not an exact asset reconstruction.
 
 ## Run locally
 
+    npm ci
     npm start
 
-Visit http://localhost:8080. For a headset, use HTTPS hosting; a plain HTTP LAN address cannot start immersive WebXR.
+Visit http://localhost:4173. For a headset, use HTTPS hosting; a plain HTTP LAN address cannot start immersive WebXR.
 
-    npm run check
+    npm run build
 
-No npm dependencies or build step are needed. GitHub Actions checks the source, assembles the static page and publishes to GitHub Pages. The repository's **Settings → Pages → Source** must be **GitHub Actions**.
+Every push to main builds the game with Vite and publishes the production bundle to GitHub Pages, using the same deployment setup as Oasis and Waterworld. No test jobs run during publishing. The repository's **Settings → Pages → Source** must be **GitHub Actions**.
 
 ## Rendering
 
