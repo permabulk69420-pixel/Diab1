@@ -88,10 +88,10 @@ function tree(b,x,z,size=1,seed=5){
  if(size>.7)b.colliders.push({type:'circle',x,z,r:.22*size});
 }
 function rock(b,x,z,scale=1){
- const g=new THREE.DodecahedronGeometry(1,0),pos=g.attributes.position;
- for(let i=0;i<pos.count;i++){const n=.8+rand()*.24;pos.setXYZ(i,pos.getX(i)*n,pos.getY(i)*n,pos.getZ(i)*n);}g.computeVertexNormals();
- b.add(g,'rock',x,groundHeight(x,z)+scale*.35,z,scale,scale*.63,scale*.82,rand()*.3,rand()*6,rand()*.2,new THREE.Color().setScalar(.66+rand()*.35));g.dispose();
- if(scale>.68)b.colliders.push({type:'circle',x,z,r:scale*.65});
+ const g=new THREE.DodecahedronGeometry(1,0);
+ const sx=scale*(.84+rand()*.34),sy=scale*(.52+rand()*.24),sz=scale*(.74+rand()*.30);
+ b.add(g,'rock',x,groundHeight(x,z)+sy*.42,z,sx,sy,sz,(rand()-.5)*.34,rand()*Math.PI*2,(rand()-.5)*.24,new THREE.Color().setScalar(.66+rand()*.35));g.dispose();
+ if(scale>.68)b.colliders.push({type:'circle',x,z,r:Math.max(sx,sz)*.62});
 }
 function stoneWall(b,a,c){
  const dx=c.x-a.x,dz=c.z-a.z,len=Math.hypot(dx,dz),angle=Math.atan2(dx,dz),n=Math.ceil(len/.85);
