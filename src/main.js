@@ -7,8 +7,9 @@ const params=new URLSearchParams(location.search),review=params.has('review');
 let renderer,scene,camera,rig,world,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
 let previousTime=0,elapsed=0,mapOpen=false,frames=0,frameTime=0,testWalk=0;
 const keys=new Set(),touchMove={x:0,y:0},direction=new THREE.Vector3(),head=new THREE.Vector3(),afterTurn=new THREE.Vector3();
+const vrVelocity=new THREE.Vector3(),vrTarget=new THREE.Vector3(),vrForward=new THREE.Vector3(),vrRight=new THREE.Vector3(),worldUp=new THREE.Vector3(0,1,0);
 const coarse=matchMedia('(pointer:coarse)').matches;
-let cameraMode='ground',overheadCamera,lights=[],previousA=false;
+let cameraMode='ground',overheadCamera,lights=[],previousA=false,sprintActive=false,sprintButtonDown=false;
 function showError(e){$('error').hidden=false;$('error').textContent='The town could not finish loading: '+(e.message||e)+'. Reload the page to try again.';console.error(e);}
 addEventListener('error',e=>showError(e.error||e.message));
 addEventListener('unhandledrejection',e=>showError(e.reason));
@@ -59,8 +60,8 @@ async function enterVR(){
  if(session)return;
  try{
   session=await navigator.xr.requestSession('immersive-vr',{requiredFeatures:['local-floor'],optionalFeatures:['bounded-floor']});
-  const active=session;active.addEventListener('end',()=>{session=null;camera.position.set(0,1.68,0);camera.rotation.set(0,0,0);$('welcome').hidden=false;$('hud').hidden=true;started=false;previousA=false;});
-  cameraMode='ground';pitch=0;camera.position.set(0,0,0);camera.rotation.set(0,0,0);rig.position.y=walkHeight(rig.position.x,rig.position.z);
+  const active=session;active.addEventListener('end',()=>{session=null;camera.position.set(0,1.68,0);camera.rotation.set(0,0,0);vrVelocity.set(0,0,0);sprintActive=false;sprintButtonDown=false;$('welcome').hidden=false;$('hud').hidden=true;started=false;previousA=false;});
+  cameraMode='ground';pitch=0;camera.position.set(0,0,0);camera.rotation.set(0,0,0);rig.rotation.set(0,0,0);vrVelocity.set(0,0,0);sprintActive=false;sprintButtonDown=false;rig.position.y=walkHeight(rig.position.x,rig.position.z);
   $('welcome').hidden=true;$('hud').hidden=true;$('hint').hidden=true;$('touch-pad').hidden=true;$('settings').hidden=true;$('map-panel').hidden=true;mapOpen=false;started=true;
   await renderer.xr.setSession(active);
   if(active.updateTargetFrameRate&&active.supportedFrameRates?.includes(90))try{await active.updateTargetFrameRate(90);}catch{}
@@ -77,46 +78,72 @@ function move(dx,dz){
  }
  rig.position.y=walkHeight(rig.position.x,rig.position.z);
 }
-function deadzone(v){const a=Math.abs(v);return a<.16?0:Math.sign(v)*(a-.16)/.84;}
-function xrStick(gp){
- const order=gp.mapping==='xr-standard'?[[2,3],[0,1]]:[[0,1],[2,3]];
- let x=0,y=0,best=-1;
- for(const [ix,iy] of order){
-  if(ix>=gp.axes.length||iy>=gp.axes.length)continue;
-  const px=Number.isFinite(gp.axes[ix])?gp.axes[ix]:0,py=Number.isFinite(gp.axes[iy])?gp.axes[iy]:0,mag=px*px+py*py;
-  if(mag>best){best=mag;x=px;y=py;}
+function deadzone(v,dz=.16){const a=Math.abs(v);return a<dz?0:Math.sign(v)*(a-dz)/(1-dz);}
+function moveXR(dx,dz){
+ const n=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.12));
+ let x=head.x,z=head.z,movedX=0,movedZ=0;
+ for(let i=0;i<n;i++){
+  const sx=dx/n,sz=dz/n;
+  if(positionAllowed(x+sx,z)){x+=sx;movedX+=sx;}
+  if(positionAllowed(x,z+sz)){z+=sz;movedZ+=sz;}
  }
- return {x:deadzone(x),y:deadzone(y)};
+ rig.position.x+=movedX;rig.position.z+=movedZ;
+ head.x=x;head.z=z;
+ rig.position.y=walkHeight(x,z);
+ rig.updateMatrixWorld(true);
 }
 function xrInput(dt){
- let forward=0,strafe=0,turn=0,sprint=false,aPressed=false;
- for(const input of session.inputSources){
-  const gp=input.gamepad;if(!gp)continue;
-  const stick=xrStick(gp);
-  if(input.handedness==='left'){
-   strafe=stick.x;
-   forward=-stick.y;
-   sprint=!!gp.buttons[3]?.pressed;
-  }else if(input.handedness==='right'){
-   turn=stick.x;
-   aPressed=!!gp.buttons[4]?.pressed;
+ const activeSession=renderer.xr.getSession();
+ if(!activeSession||activeSession.visibilityState==='hidden')return;
+
+ // Same XR camera refresh used by Oasis before reading the physical head pivot.
+ rig.updateMatrixWorld(true);
+ renderer.xr.updateCamera(camera);
+ const activeCamera=renderer.xr.getCamera();
+ activeCamera.getWorldPosition(head);
+
+ let x=0,z=0,turn=0,aPressed=false,sprintPressed=false;
+ for(const source of activeSession.inputSources){
+  if(source.handedness!=='left'&&source.handedness!=='right')continue;
+  const pad=source.gamepad;if(!pad)continue;
+  const axes=pad.axes||[];
+  const axis=axes.length>=4?axes.length-2:0;
+  if(source.handedness==='left'){
+   if(axes.length>=2){x=deadzone(axes[axis]||0,.15);z=deadzone(axes[axis+1]||0,.15);}
+   sprintPressed=!!pad.buttons[3]?.pressed;
+  }else{
+   if(axes.length>=2)turn=deadzone(axes[axis]||0,.15);
+   aPressed=!!pad.buttons[4]?.pressed;
   }
  }
- const xrCam=renderer.xr.getCamera(camera);
- if(turn){
-  xrCam.getWorldPosition(head);
-  rig.rotation.y-=turn*turnSpeed*dt;
+
+ if(sprintPressed&&!sprintButtonDown)sprintActive=!sprintActive;
+ sprintButtonDown=sprintPressed;
+
+ // Same smooth-turn pivot as Oasis: rotate the virtual rig around the physical head.
+ const radians=-turn*turnSpeed*dt;
+ if(radians){
+  const dx=rig.position.x-head.x,dz=rig.position.z-head.z,c=Math.cos(radians),s=Math.sin(radians);
+  rig.position.x=head.x+c*dx+s*dz;
+  rig.position.z=head.z-s*dx+c*dz;
+  rig.rotation.y+=radians;
   rig.updateMatrixWorld(true);
-  xrCam.getWorldPosition(afterTurn);
-  rig.position.x+=head.x-afterTurn.x;
-  rig.position.z+=head.z-afterTurn.z;
  }
- xrCam.getWorldDirection(direction);direction.y=0;
- if(direction.lengthSq()<1e-6)direction.set(0,0,-1);else direction.normalize();
- const rightX=-direction.z,rightZ=direction.x;
- const length=Math.max(1,Math.hypot(strafe,forward)),speed=(sprint?4:moveSpeed)*dt/length;
- move((direction.x*forward+rightX*strafe)*speed,(direction.z*forward+rightZ*strafe)*speed);
- if(aPressed&&!previousA){rig.position.set(spawn.x,0,spawn.z);rig.rotation.y=0;}
+
+ // Same Oasis ground locomotion: stick movement follows virtual body yaw, not head gaze.
+ vrForward.set(-Math.sin(rig.rotation.y),0,-Math.cos(rig.rotation.y));
+ vrRight.crossVectors(vrForward,worldUp).normalize();
+ vrTarget.copy(vrRight).multiplyScalar(x).addScaledVector(vrForward,-z);
+ if(vrTarget.lengthSq()>1)vrTarget.normalize();
+ vrTarget.multiplyScalar(sprintActive?4:moveSpeed);
+ vrVelocity.lerp(vrTarget,1-Math.exp(-dt*(vrTarget.lengthSq()?18:28)));
+ moveXR(vrVelocity.x*dt,vrVelocity.z*dt);
+
+ if(aPressed&&!previousA){
+  rig.position.set(spawn.x,walkHeight(spawn.x,spawn.z),spawn.z);
+  rig.rotation.set(0,0,0);
+  vrVelocity.set(0,0,0);
+ }
  previousA=aPressed;
 }
 function frame(ms){
