@@ -1,0 +1,26 @@
+name: Temporary bridge and rock visual QA
+on:
+  push:
+    branches: [qa-visual-bridge-rocks]
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: |
+          npm install --prefix .qa playwright@1.55.1
+          .qa/node_modules/.bin/playwright install --with-deps chromium
+      - run: |
+          npm start >/tmp/diab1-vite.log 2>&1 &
+          node tests/bridge-rock-visual.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-rock-renders
+          path: qa-renders
