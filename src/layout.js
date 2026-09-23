@@ -54,7 +54,10 @@ export const views = {
  smithy:{at:[740,540],look:[823,486]},
  adria:{at:[1175,393],look:[1240,374]},
  graveyard:{at:[866,302],look:[800,190]},
- west:{at:[552,444],look:[700,451]}
+ west:{at:[552,444],look:[700,451]},
+ bridgeWest:{at:[585,275],look:[523,247]},
+ bridgeEast:{at:[1090,398],look:[1153,365]},
+ rocksWest:{at:[456,324],look:[346,269]}
 };
 export function segmentDistance(x,z,a,b) {
  const dx=b.x-a.x,dz=b.z-a.z,t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1)));
