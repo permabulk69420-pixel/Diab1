@@ -21,6 +21,7 @@ jobs:
           npm start >/tmp/diab1-vite.log 2>&1 &
           node tests/bridge-rock-visual.mjs
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: bridge-rock-renders
           path: qa-renders
