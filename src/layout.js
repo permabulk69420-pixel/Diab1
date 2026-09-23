@@ -46,7 +46,7 @@ export const graves = [
 ];
 export const bridges = [
  {at:[1153,365],angle:1.18,length:6.2,width:2.9},
- {at:[523,247],angle:0.05,length:5.4,width:2.4}
+ {at:[505,260],angle:1.98,length:5.4,width:2.4}
 ];
 export const views = {
  square:{at:[692,557],look:[697,446]},
