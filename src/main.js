@@ -104,7 +104,7 @@ function frame(ms){
  for(let i=0;i<lights.length;i++){const m=fireSources[i];if(m){lights[i].position.set(m.x,m.y,m.z);lights[i].intensity=(m.kind==='fire'?30:12)*(1+Math.sin(elapsed*5.7+i)*.035);}}
  const shader=world.materials.water.userData.shader;if(shader)shader.uniforms.uTime.value=elapsed;
  renderer.render(scene,cameraMode==='overhead'?overheadCamera:camera);
- frames++;frameTime+=dt;
+ frames++;frameTime+=Math.max(.001,(ms-(frame.lastMs||ms-16))/1000);frame.lastMs=ms;
  if(frames%20===0){
   const info=renderer.info.render,text=Math.round(frames/frameTime)+' fps · '+info.calls+' draws · '+Math.round(info.triangles/1000)+'k tris';
   $('stats').textContent=text+'\n'+rig.position.x.toFixed(1)+', '+rig.position.z.toFixed(1);
