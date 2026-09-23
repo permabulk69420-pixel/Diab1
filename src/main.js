@@ -13,9 +13,13 @@ function showError(e){$('error').hidden=false;$('error').textContent='The town c
 addEventListener('error',e=>showError(e.error||e.message));
 addEventListener('unhandledrejection',e=>showError(e.reason));
 function sky(){
- const g=new THREE.SphereGeometry(300,32,16);
- const m=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{},vertexShader:'varying vec3 vWorld; void main(){vWorld=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_Position.z=gl_Position.w;}',
- fragmentShader:'varying vec3 vWorld; float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}void main(){vec3 d=normalize(vWorld);float h=max(d.y,0.);vec3 c=mix(vec3(.19,.235,.25),vec3(.065,.092,.13),pow(h,.48));vec2 uv=d.xz/(max(d.y,.07)+.4)*2.2;float f=noise(uv)*.53+noise(uv*2.)*.25+noise(uv*4.)*.125+noise(uv*8.)*.06;c+=vec3(.07,.064,.057)*(smoothstep(.38,.76,f)-.4);gl_FragColor=vec4(c,1.);}'});
+ const g=new THREE.SphereGeometry(300,48,24);
+ const m=new THREE.ShaderMaterial({
+  side:THREE.BackSide,
+  depthWrite:false,
+  vertexShader:'varying vec3 vDir; void main(){vDir=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_Position.z=gl_Position.w;}',
+  fragmentShader:'varying vec3 vDir; void main(){vec3 d=normalize(vDir);float h=clamp(d.y*.5+.5,0.,1.);vec3 horizon=vec3(.17,.205,.215);vec3 zenith=vec3(.038,.055,.078);vec3 c=mix(horizon,zenith,smoothstep(.18,.9,h));float band1=sin(d.x*5.1+d.z*3.7+d.y*1.4);float band2=sin(d.x*8.3-d.z*4.6+d.y*2.1+1.7);float band3=sin((d.x+d.z)*11.2-d.y*3.3+.8);float cloud=band1*.50+band2*.30+band3*.20;cloud=smoothstep(.22,.82,cloud*.5+.5);float cloudMask=(1.-smoothstep(.62,.98,h))*smoothstep(.03,.34,h);c+=vec3(.055,.058,.056)*cloud*cloudMask;c-=vec3(.018,.020,.022)*(1.-cloud)*cloudMask;float glow=pow(max(dot(d,normalize(vec3(-.42,.72,.25))),0.),24.);c+=vec3(.10,.115,.13)*glow;gl_FragColor=vec4(c,1.);}'
+ });
  scene.add(new THREE.Mesh(g,m));
 }
 function init(){
