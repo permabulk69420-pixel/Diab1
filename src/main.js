@@ -41,6 +41,13 @@ function init(){
  $('loading').hidden=true;$('welcome').hidden=false;
  if(review){$('review').hidden=false;$('review-view').value=params.get('view')||'square';setView($('review-view').value);enterScreen();}
  renderer.setAnimationLoop(frame);probeVR();
+ if(params.has('staticqa')){
+  renderer.setAnimationLoop(null);
+  renderer.setPixelRatio(.75);
+  renderer.setSize(innerWidth,innerHeight);
+  window.__qaSetView=id=>{setView(id);renderer.render(scene,cameraMode==='overhead'?overheadCamera:camera);};
+  window.__qaSetView(params.get('view')||'square');
+ }
 }
 function setView(id){
  if(id==='overhead'){cameraMode='overhead';scene.fog=null;return;}cameraMode='ground';scene.fog=new THREE.Fog(0x38444a,36,142);
