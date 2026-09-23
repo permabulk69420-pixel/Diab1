@@ -1,0 +1,10 @@
+{
+  "name": "diab1-tristram-vr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "check": "node --check src/main.js && node --check src/world.js && node --check src/architecture.js && node --check src/materials.js && node --check src/geometry.js && node --check src/layout.js && node --test tests/navigation.test.js"
+  }
+}

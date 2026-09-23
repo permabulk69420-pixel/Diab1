@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#11191b">
+<title>Diab1 — Tristram VR</title><link rel="icon" href="data:,"><link rel="stylesheet" href="./style.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
+</head><body>
+<canvas id="world" aria-label="Three dimensional Tristram town"></canvas>
+<div id="loading"><span class="sigil">I</span><p>TRISTRAM</p><small id="loading-message">Building the town…</small></div>
+<section id="welcome" hidden>
+ <div class="eyebrow">DIAB1 <span></span> A FAN VR REMAKE</div><h1>Tristram</h1>
+ <p class="intro">A quiet town.<br>A shadow beneath it.</p>
+ <div class="actions"><button id="enter-vr" class="primary" disabled>Checking VR…</button><button id="explore">Explore on screen</button></div>
+ <p id="vr-note">Open in Meta Quest Browser to enter VR.</p>
+ <div class="controls-summary"><span>LEFT STICK <b>Walk</b></span><span>RIGHT STICK <b>Smooth turn</b></span></div>
+ <footer>Town &amp; environment study <span>•</span> Diablo I · 1996</footer>
+</section>
+<div id="hud" hidden><span id="location">TRISTRAM</span><div><button id="map-toggle" title="Town map (M)">Map</button><button id="settings-toggle">Settings</button><button id="menu-toggle">Menu</button></div></div>
+<div id="hint" hidden>WASD to walk · drag to look · Shift to move faster · M for map</div>
+<section id="settings" class="panel" hidden>
+ <button class="close" id="settings-close" aria-label="Close settings">×</button><h2>Settings</h2>
+ <label>Walking speed <input id="move-speed" type="range" min="1.5" max="4" step=".1" value="2.4"><output id="move-label">2.4 m/s</output></label>
+ <label>Smooth turn speed <input id="turn-speed" type="range" min="30" max="120" step="5" value="65"><output id="turn-label">65°/s</output></label>
+ <label>Brightness <input id="brightness" type="range" min=".65" max="1.8" step=".05" value="1"><output id="brightness-label">100%</output></label>
+ <label>Rendering <select id="quality"><option value="balanced">Quest 3 — balanced</option><option value="high">High detail + static shadows</option></select></label>
+ <label class="check"><input type="checkbox" id="stats-toggle">Show frame statistics</label>
+ <p>VR uses smooth movement and smooth turning. Press A to return to the town square.</p>
+</section>
+<section id="map-panel" class="panel" hidden><button class="close" id="map-close" aria-label="Close town map">×</button><h2>Tristram</h2><canvas id="town-map" width="520" height="520"></canvas><p>The town, churchyard and surrounding streams.</p></section>
+<div id="touch-pad" hidden><div id="touch-knob"></div></div><div id="stats" hidden></div><div id="error" hidden role="alert"></div>
+<div id="review" hidden><span>View</span><select id="review-view"><option value="square">Town square</option><option value="cathedral">Cathedral approach</option><option value="smithy">Smithy</option><option value="adria">Adria's hut</option><option value="graveyard">Graveyard</option><option value="west">Western lane</option><option value="overhead">Overhead</option></select><output id="review-status"></output><button id="review-walk">Walk forward 3 seconds</button><button id="review-collision">Check collision routes</button></div>
+<script type="module" src="./src/main.js"></script></body></html>
