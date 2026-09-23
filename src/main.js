@@ -74,19 +74,46 @@ function move(dx,dz){
  rig.position.y=walkHeight(rig.position.x,rig.position.z);
 }
 function deadzone(v){const a=Math.abs(v);return a<.16?0:Math.sign(v)*(a-.16)/.84;}
+function xrStick(gp){
+ const order=gp.mapping==='xr-standard'?[[2,3],[0,1]]:[[0,1],[2,3]];
+ let x=0,y=0,best=-1;
+ for(const [ix,iy] of order){
+  if(ix>=gp.axes.length||iy>=gp.axes.length)continue;
+  const px=Number.isFinite(gp.axes[ix])?gp.axes[ix]:0,py=Number.isFinite(gp.axes[iy])?gp.axes[iy]:0,mag=px*px+py*py;
+  if(mag>best){best=mag;x=px;y=py;}
+ }
+ return {x:deadzone(x),y:deadzone(y)};
+}
 function xrInput(dt){
  let forward=0,strafe=0,turn=0,sprint=false,aPressed=false;
  for(const input of session.inputSources){
-  const gp=input.gamepad;if(!gp)continue;const ax=gp.axes.length>=4?2:0;
-  if(input.handedness==='left'){strafe=deadzone(gp.axes[ax]||0);forward=-deadzone(gp.axes[ax+1]||0);sprint=!!gp.buttons[3]?.pressed;}
-  if(input.handedness==='right'){turn=deadzone(gp.axes[ax]||0);aPressed=!!gp.buttons[4]?.pressed;}
+  const gp=input.gamepad;if(!gp)continue;
+  const stick=xrStick(gp);
+  if(input.handedness==='left'){
+   strafe=stick.x;
+   forward=-stick.y;
+   sprint=!!gp.buttons[3]?.pressed;
+  }else if(input.handedness==='right'){
+   turn=stick.x;
+   aPressed=!!gp.buttons[4]?.pressed;
+  }
  }
  const xrCam=renderer.xr.getCamera(camera);
- if(turn){xrCam.getWorldPosition(head);rig.rotation.y-=turn*turnSpeed*dt;rig.updateMatrixWorld(true);xrCam.getWorldPosition(afterTurn);rig.position.x+=head.x-afterTurn.x;rig.position.z+=head.z-afterTurn.z;}
- xrCam.getWorldDirection(direction);direction.y=0;direction.normalize();
+ if(turn){
+  xrCam.getWorldPosition(head);
+  rig.rotation.y-=turn*turnSpeed*dt;
+  rig.updateMatrixWorld(true);
+  xrCam.getWorldPosition(afterTurn);
+  rig.position.x+=head.x-afterTurn.x;
+  rig.position.z+=head.z-afterTurn.z;
+ }
+ xrCam.getWorldDirection(direction);direction.y=0;
+ if(direction.lengthSq()<1e-6)direction.set(0,0,-1);else direction.normalize();
+ const rightX=-direction.z,rightZ=direction.x;
  const length=Math.max(1,Math.hypot(strafe,forward)),speed=(sprint?4:moveSpeed)*dt/length;
- move((direction.x*forward-direction.z*strafe)*speed,(direction.z*forward+direction.x*strafe)*speed);
- if(aPressed&&!previousA){rig.position.set(spawn.x,0,spawn.z);rig.rotation.y=0;}previousA=aPressed;
+ move((direction.x*forward+rightX*strafe)*speed,(direction.z*forward+rightZ*strafe)*speed);
+ if(aPressed&&!previousA){rig.position.set(spawn.x,0,spawn.z);rig.rotation.y=0;}
+ previousA=aPressed;
 }
 function frame(ms){
  const dt=Math.min((ms-previousTime)/1000||.016,.045);previousTime=ms;elapsed+=dt;
