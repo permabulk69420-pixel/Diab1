@@ -253,28 +253,6 @@ export function buildLevel(L, materials) {
     });
   }
 
-  // --- rubble, bones, skulls and old blood -------------------------------------------
-  for (const d of L.debris) {
-    const x = W(d.x), z = W(d.y);
-    if (d.kind === 'rubble') {
-      for (let k = 0; k < 3; k++) { const g = new THREE.DodecahedronGeometry(.07 + r() * .1 * d.s, 0); b.add(g, 'rock', x + (r() - .5) * .5, .04, z + (r() - .5) * .5, 1, .6, 1, r(), r() * 6, 0, tint(.5, .8)); g.dispose(); }
-    } else if (d.kind === 'bones') {
-      for (let k = 0; k < 3; k++) { const a = d.rot + k * 1.1, l = .18 + r() * .25, bx = x + (r() - .5) * .3, bz = z + (r() - .5) * .3; b.beam('bone', [bx - Math.cos(a) * l, .03, bz - Math.sin(a) * l], [bx + Math.cos(a) * l, .03, bz + Math.sin(a) * l], .018, tint(.7, .95)); }
-    } else {
-      b.at(x, 0, z, d.rot, () => {
-        const s = new THREE.SphereGeometry(.1, 8, 6); b.add(s, 'bone', 0, .1, 0, 1, .9, 1.15, 0, 0, 0, tint(.75, .95)); s.dispose();
-        b.box('bone', 0, .03, .07, .1, .05, .07);
-        for (const ex of [-.04, .04]) b.box('void', ex, .11, .105, .035, .03, .02);
-      });
-    }
-  }
-  for (const s of L.stains) {
-    const g = new THREE.CircleGeometry(.5, 12), p = g.attributes.position;
-    for (let i = 1; i < p.count; i++) { const k = .55 + r() * .75; p.setXY(i, p.getX(i) * k, p.getY(i) * k); }
-    g.rotateX(-Math.PI / 2); g.computeVertexNormals();
-    b.add(g, 'blood', W(s.x), .008, W(s.y), s.s * 1.6, 1, s.s, 0, s.rot, 0, tint(.7, 1)); g.dispose();
-  }
-
   const group = b.finish(); group.name = 'Cathedral level ' + L.level;
 
   // --- wooden doors: separate meshes so they can swing ------------------------------
