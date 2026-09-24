@@ -3,6 +3,9 @@ import {canStand} from '../geometry.js';
 import {makeDungeonMaterials} from '../materials.js';
 import {generateLevel, levelSeed, toWorld, toGrid, SOLID, HALL, CELL, DIRS} from './generate.js';
 import {buildLevel, STAIR_RISE} from './build.js';
+import {preloadProps, placeBarrels, addBarrels, BARREL_R} from './props.js';
+
+preloadProps();
 
 const explored = new Map();   // level -> Uint8Array, kept for the whole session like Diablo's automap
 const openedDoors = new Map(); // level -> Map(door index -> swing side), doors stay open like in Diablo
@@ -37,6 +40,8 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
   const size = L.size, I = (x, y) => y * size + x;
   const seen = explored.get(level) || new Uint8Array(size * size); explored.set(level, seen);
 
+  const barrels = placeBarrels(L);
+  for (const b of barrels) colliders.push({type: 'circle', x: b.x, z: b.z, r: BARREL_R * b.s});
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x010101);
   // Diablo's light radius: black fog closes in a little more on every level.
@@ -44,6 +49,7 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
   scene.fog = new THREE.Fog(0x010101, 3.2, fogFar);
   scene.add(new THREE.HemisphereLight(0x55607a, 0x1a120c, 1.1));
   scene.add(group);
+  addBarrels(scene, barrels);
   const lights = [];
   for (let i = 0; i < 3; i++) { const l = new THREE.PointLight(0xff9447, 0, 11, 2); scene.add(l); lights.push(l); }
 
