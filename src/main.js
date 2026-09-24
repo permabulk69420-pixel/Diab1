@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createVRHands} from './hands.js';
 import {buildWorld,walkHeight,waterBlocked} from './world.js';
 import {canStand} from './geometry.js';
 import {spawn,p,views,buildings,cathedral,roads,riverTraces} from './layout.js';
@@ -6,7 +7,7 @@ import {createDungeonArea} from './dungeon/area.js';
 import {MAX_LEVEL} from './dungeon/generate.js';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search),review=params.has('review');
-let renderer,scene,townScene,camera,rig,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
+let renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
 let previousTime=0,elapsed=0,mapOpen=false,frames=0,frameTime=0,testWalk=0;
 const keys=new Set(),touchMove={x:0,y:0},direction=new THREE.Vector3(),head=new THREE.Vector3(),afterTurn=new THREE.Vector3();
 const vrVelocity=new THREE.Vector3(),vrTarget=new THREE.Vector3(),vrForward=new THREE.Vector3(),vrRight=new THREE.Vector3(),worldUp=new THREE.Vector3(0,1,0);
@@ -37,6 +38,7 @@ function init(){
  const moon=new THREE.DirectionalLight(0xb4c8ed,2.1);moon.position.set(-45,70,22);moon.castShadow=true;moon.shadow.mapSize.set(2048,2048);Object.assign(moon.shadow.camera,{left:-80,right:80,top:80,bottom:-80,near:1,far:160});moon.shadow.bias=-.0003;moon.shadow.normalBias=.035;scene.add(moon);
  camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.07,190);camera.rotation.order='YXZ';camera.position.y=1.68;
  rig=new THREE.Group();scene.add(rig);rig.add(camera);rig.position.set(spawn.x,0,spawn.z);
+ hands=createVRHands({renderer,parent:rig,onError:message=>console.warn('[Diab1 hands]',message)});
  world=buildWorld(scene);
  for(let i=0;i<2;i++){const l=new THREE.PointLight(0xff9c46,13,8,2);scene.add(l);lights.push(l);}
  townArea=createTownArea();area=townArea;
@@ -175,6 +177,7 @@ function frame(ms){
  updateTransition(dt);
  if(renderer.xr.isPresenting){vrMap.visible=mapHeld&&!transition;if(vrMap.visible&&frames%6===0){area.drawMap(vrMapTex.image.getContext('2d'),512,pos,playerYaw());vrMapTex.needsUpdate=true;}}else vrMap.visible=false;
  lantern.visible=area!==townArea;lantern.intensity=15*(1+Math.sin(elapsed*6.1)*.03);
+ hands?.update(dt);
  renderer.render(scene,cameraMode==='overhead'?overheadCamera:camera);
  frames++;frameTime+=Math.max(.001,(ms-(frame.lastMs||ms-16))/1000);frame.lastMs=ms;
  if(frames%20===0){
