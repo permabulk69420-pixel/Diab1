@@ -5,6 +5,13 @@ import {generateLevel, levelSeed, toWorld, toGrid, SOLID, HALL, CELL, DIRS} from
 import {buildLevel, STAIR_RISE} from './build.js';
 
 const explored = new Map();   // level -> Uint8Array, kept for the whole session like Diablo's automap
+const openedDoors = new Map(); // level -> Map(door index -> swing side), doors stay open like in Diablo
+const DOOR_SWING = 96 * Math.PI / 180, DOOR_TIME = .75;
+const ease = t => t * t * (3 - 2 * t);
+function segDist(px, pz, ax, az, bx, bz) {
+  const vx = bx - ax, vz = bz - az, t = Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / (vx * vx + vz * vz)));
+  return Math.hypot(px - ax - vx * t, pz - az - vz * t);
+}
 
 /**
  * One cathedral level as a self-contained "area" the main loop can swap in.
@@ -13,7 +20,20 @@ const explored = new Map();   // level -> Uint8Array, kept for the whole session
 export function createDungeonArea({level, runSeed, baseMaterials}) {
   const materials = makeDungeonMaterials(baseMaterials);
   const L = generateLevel({seed: levelSeed(runSeed, level), level});
-  const {group, colliders, markers} = buildLevel(L, materials);
+  const {group, colliders, markers, doors} = buildLevel(L, materials);
+  const opened = openedDoors.get(level) || new Map(); openedDoors.set(level, opened);
+  /** Player position in a door's frame: u along the doorway, v through it. */
+  const doorLocal = (d, x, z) => { const dx = x - d.x, dz = z - d.z, c = Math.cos(d.yaw), s = Math.sin(d.yaw); return {u: dx * c - dz * s, v: dx * s + dz * c}; };
+  const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+  function swing(d) {
+    const a = DOOR_SWING * ease(d.open);
+    d.leaves.forEach((p, i) => { p.rotation.y = -(i ? -1 : 1) * d.dir * a; });
+    if (d.open < 1) return;
+    // Fully open: each leaf becomes a thin segment you can't walk through.
+    d.root.updateMatrixWorld(true);
+    d.segs = d.leaves.map((p, i) => { p.localToWorld(tmpA.set(0, 0, 0)); p.localToWorld(tmpB.set((i ? -1 : 1) * d.lw, 0, 0)); return [tmpA.x, tmpA.z, tmpB.x, tmpB.z]; });
+  }
+  for (const d of doors) if (opened.has(d.index)) { d.dir = opened.get(d.index); d.open = 1; swing(d); }
   const size = L.size, I = (x, y) => y * size + x;
   const seen = explored.get(level) || new Uint8Array(size * size); explored.set(level, seen);
 
@@ -46,6 +66,10 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
     get home() { return this.arrivals.up; },
     allowed(x, z, r = .26) {
       for (const [ox, oz] of [[-r, -r], [r, -r], [-r, r], [r, r], [0, 0]]) if (solidAt(x + ox, z + oz)) return false;
+      for (const d of doors) {
+        if (d.open < .55) { const q = doorLocal(d, x, z); if (Math.abs(q.u) < d.half && Math.abs(q.v) < .06 + r) return false; }
+        else if (d.segs) for (const g of d.segs) if (segDist(x, z, ...g) < r + .05) return false;
+      }
       return canStand(x, z, colliders, r);
     },
     height(x, z) { const st = stairAt(x, z); return st ? (st.s.kind === 'down' ? -1 : 1) * STAIR_RISE * st.t : 0; },
@@ -58,6 +82,14 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
     label() { return 'CATHEDRAL · LEVEL ' + level; },
     update(dt, elapsed, pos) {
       const flame = materials.flame.userData.shader; if (flame) flame.uniforms.uTime.value = elapsed;
+      // Doors swing open away from you as you walk up to them.
+      for (const d of doors) {
+        if (!d.dir) {
+          const q = doorLocal(d, pos.x, pos.z);
+          if (Math.abs(q.u) < d.half + .6 && Math.abs(q.v) < 2.1) { d.dir = q.v > 0 ? -1 : 1; opened.set(d.index, d.dir); }
+        }
+        if (d.dir && d.open < 1) { d.open = Math.min(1, d.open + dt / DOOR_TIME); swing(d); }
+      }
       const near = markers.map(m => ({m, d: (m.x - pos.x) ** 2 + (m.z - pos.z) ** 2})).sort((a, b) => a.d - b.d);
       for (let i = 0; i < lights.length; i++) {
         const e = near[i]; if (!e) { lights[i].intensity = 0; continue; }
@@ -86,6 +118,16 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
           const ax = d.x > 0 ? x + 1 : x, ay = d.y > 0 ? y + 1 : y;
           c.moveTo(to(ax), to(ay)); c.lineTo(to(d.x ? ax : ax + 1), to(d.y ? ay : ay + 1));
         }
+      }
+      c.stroke();
+      // Closed doors show as brown bars across their archway.
+      c.strokeStyle = '#8a5a2b'; c.lineWidth = Math.max(2.5, k * .35); c.beginPath();
+      for (const d of doors) {
+        if (d.dir) continue;
+        const o = d.opening, a = o.axis === 'x';
+        if (!(a ? seen[I(o.line, o.from)] || seen[I(o.line - 1, o.from)] : seen[I(o.from, o.line)] || seen[I(o.from, o.line - 1)])) continue;
+        if (a) { c.moveTo(to(o.line), to(o.from + .2)); c.lineTo(to(o.line), to(o.to - .2)); }
+        else { c.moveTo(to(o.from + .2), to(o.line)); c.lineTo(to(o.to - .2), to(o.line)); }
       }
       c.stroke();
       for (const s of stairs) if (seen[I(s.x, s.y)] || seen[I(s.x + 1, s.y + 1)]) {

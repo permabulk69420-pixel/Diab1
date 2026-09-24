@@ -37,6 +37,37 @@ function archWall(b, w, aw, spring, apex, bottom, zc, tint) {
   }
 }
 
+export const DOOR_CHANCE = .6;   // share of archways that get a pair of wooden doors
+export const HINGE_IN = .06;     // hinges sit just inside the jambs so open leaves clear the stone ribs
+
+/** One wooden door leaf following half of the pointed arch; hinge at the local origin.
+ *  side = 1 extends toward +x (left leaf), side = -1 toward -x (right leaf). */
+function doorLeaf(materials, side, aw, spring, apex) {
+  const b = new Builder(materials), lw = aw / 2 - HINGE_IN - .015, D = .09, X = v => side * v;
+  const s = new THREE.Shape();
+  s.moveTo(0, .02); s.lineTo(0, spring - .02);
+  s.bezierCurveTo(0, spring + (apex - spring) * .5, X(lw * .6), apex - .08, X(lw), apex - .1);
+  s.lineTo(X(lw), .02); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, {depth: D, bevelEnabled: false, curveSegments: 6});
+  g.translate(0, 0, -D / 2);
+  b.add(g, 'darkwood', 0, 0, 0, 1, 1, 1, 0, 0, 0, new THREE.Color(.8, .72, .64), [.5, .5]); g.dispose();
+  for (const face of [-1, 1]) {
+    const fz = face * (D / 2 + .004);
+    // Plank seams, stopping short of the curved top.
+    for (let k = 1; k < 4; k++) { const hh = spring - .12 + (apex - spring) * k / 4 * .75; b.box('darkwood', X(lw * k / 4), hh / 2 + .03, fz, .025, hh, .008, 0, new THREE.Color(.3, .26, .22)); }
+    // Iron straps with hinge knuckles.
+    for (const y of [.45, 1.35, 2.25]) {
+      b.box('iron', X(lw * .45), y, face * (D / 2 + .012), lw * .9, .09, .02);
+      for (const k of [.3, .6]) b.box('iron', X(lw * k), y, face * (D / 2 + .025), .035, .035, .012);
+    }
+    // Ring pull on its backplate near the meeting edge.
+    b.box('iron', X(lw - .2), 1.28, face * (D / 2 + .012), .12, .16, .016);
+    const ring = new THREE.TorusGeometry(.075, .013, 5, 12); b.add(ring, 'iron', X(lw - .2), 1.2, face * (D / 2 + .035)); ring.dispose();
+  }
+  for (const y of [.45, 1.35, 2.25]) b.cylinder('iron', 0, y, 0, .035, .035, .16, 6);
+  return b.finish();
+}
+
 export function buildLevel(L, materials) {
   const {size, grid} = L, r = rng(L.seed ^ 0x5bd1e995);
   const b = new Builder(materials);
@@ -98,11 +129,14 @@ export function buildLevel(L, materials) {
   }
 
   // --- pointed arches wherever a hall meets a room -----------------------------
-  for (const o of L.openings) {
+  // Centre, yaw and clear width of the arch where a hall meets a room.
+  const archFrame = o => {
     const w = (o.to - o.from) * CELL, mid = W((o.from + o.to) / 2), line = W(o.line) + o.sign * T / 2;
-    const x = o.axis === 'x' ? line : mid, z = o.axis === 'x' ? mid : line;
-    const aw = w - .7, t = tint(.8, 1);
-    b.at(x, 0, z, o.axis === 'x' ? Math.PI / 2 : 0, () => {
+    return {w, aw: w - .7, x: o.axis === 'x' ? line : mid, z: o.axis === 'x' ? mid : line, yaw: o.axis === 'x' ? Math.PI / 2 : 0};
+  };
+  for (const o of L.openings) {
+    const {w, aw, x, z, yaw} = archFrame(o), t = tint(.8, 1);
+    b.at(x, 0, z, yaw, () => {
       archWall(b, w, aw, 2.75, 3.9, 0, 0, t);
       for (const s of [-1, 1]) b.collider(.35, T, s * (aw / 2 + .175), 0);
     });
@@ -242,5 +276,22 @@ export function buildLevel(L, materials) {
   }
 
   const group = b.finish(); group.name = 'Cathedral level ' + L.level;
-  return {group, colliders: b.colliders, markers: b.markers};
+
+  // --- wooden doors: separate meshes so they can swing ------------------------------
+  const doors = [], dr = rng(L.seed ^ 0x27d4eb2f), templates = new Map();
+  L.openings.forEach((o, index) => {
+    if (dr() >= DOOR_CHANCE) return;
+    const {aw, x, z, yaw} = archFrame(o);
+    let t = templates.get(aw);
+    if (!t) templates.set(aw, t = [1, -1].map(side => doorLeaf(materials, side, aw, 2.75, 3.9)));
+    const root = new THREE.Group(); root.name = 'Door ' + index;
+    root.position.set(x, 0, z); root.rotation.y = yaw;
+    const leaves = [1, -1].map((side, i) => {
+      const pivot = new THREE.Group(); pivot.position.x = -side * (aw / 2 - HINGE_IN);
+      pivot.add(t[i].clone()); root.add(pivot); return pivot;
+    });
+    group.add(root);
+    doors.push({index, opening: o, root, leaves, x, z, yaw, half: aw / 2, lw: aw / 2 - HINGE_IN - .015, open: 0, dir: 0, segs: null});
+  });
+  return {group, colliders: b.colliders, markers: b.markers, doors};
 }
