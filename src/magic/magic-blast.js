@@ -27,7 +27,7 @@ function glowTexture() {
   return texture;
 }
 
-export function createMagicBlast({ scene: initialScene, renderer, camera, rig, hands, hitTest }) {
+export function createMagicBlast({ scene: initialScene, renderer, camera, rig, hands, hitTest, onHit }) {
   const scene = new THREE.Group();
   scene.name = 'Magic';
   initialScene.add(scene);
@@ -251,7 +251,7 @@ export function createMagicBlast({ scene: initialScene, renderer, camera, rig, h
       const distance = p.velocity.length() * dt;
       const hit = hitTest(p.previous, direction, distance + p.group.scale.x);
       if (hit || p.life <= 0) {
-        if (hit) { burst(hit.point, p.power, hit.normal); hits++; }
+        if (hit) { burst(hit.point, p.power, hit.normal); hits++; onHit?.(hit, p.power); }
         p.life = 0; p.group.visible = false; continue;
       }
       p.group.position.addScaledVector(p.velocity, dt);

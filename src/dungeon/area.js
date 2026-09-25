@@ -4,8 +4,9 @@ import {makeDungeonMaterials} from '../materials.js';
 import {generateLevel, levelSeed, toWorld, toGrid, SOLID, HALL, CELL, DIRS} from './generate.js';
 import {buildLevel, STAIR_RISE, WALL_H} from './build.js';
 import {preloadProps, placeBarrels, addBarrels, BARREL_R} from './props.js';
+import {preloadEnemies, createEnemies} from './enemies.js';
 
-preloadProps();
+preloadProps(); preloadEnemies();
 
 const explored = new Map();   // level -> Uint8Array, kept for the whole session like Diablo's automap
 const openedDoors = new Map(); // level -> Map(door index -> swing side), doors stay open like in Diablo
@@ -20,7 +21,7 @@ function segDist(px, pz, ax, az, bx, bz) {
  * One cathedral level as a self-contained "area" the main loop can swap in.
  * Levels are deterministic per (runSeed, level), so going back up finds the same layout.
  */
-export function createDungeonArea({level, runSeed, baseMaterials}) {
+export function createDungeonArea({level, runSeed, baseMaterials, onPlayerHit}) {
   const materials = makeDungeonMaterials(baseMaterials);
   const L = generateLevel({seed: levelSeed(runSeed, level), level});
   const {group, colliders, markers, doors} = buildLevel(L, materials);
@@ -50,6 +51,7 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
   scene.add(new THREE.HemisphereLight(0x55607a, 0x1a120c, 1.1));
   scene.add(group);
   addBarrels(scene, barrels);
+  let enemies = null;   // created below once area.allowed/height exist
   const lights = [];
   for (let i = 0; i < 3; i++) { const l = new THREE.PointLight(0xff9447, 0, 11, 2); scene.add(l); lights.push(l); }
 
@@ -70,7 +72,8 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
     id: 'dungeon', level, seed: L.seed, data: L, scene, far: fogFar + 4,
     arrivals: {up: arrival(L.stairs.up), down: L.stairs.down ? arrival(L.stairs.down) : arrival(L.stairs.up)},
     get home() { return this.arrivals.up; },
-    allowed(x, z, r = .26) {
+    allowed(x, z, r = .26, self) {
+      if (self === undefined && enemies?.blocks(x, z, r)) return false;
       for (const [ox, oz] of [[-r, -r], [r, -r], [-r, r], [r, r], [0, 0]]) if (solidAt(x + ox, z + oz)) return false;
       for (const d of doors) {
         if (d.open < .55) { const q = doorLocal(d, x, z); if (Math.abs(q.u) < d.half && Math.abs(q.v) < .06 + r) return false; }
@@ -79,6 +82,9 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
       return canStand(x, z, colliders, r);
     },
     ceiling: WALL_H,
+    enemyAt: (x, y, z) => enemies?.at(x, y, z) || null,
+    blast: (point, power, direct) => enemies?.blast(point, power, direct),
+    get enemies() { return enemies; },
     height(x, z) { const st = stairAt(x, z); return st ? (st.s.kind === 'down' ? -1 : 1) * STAIR_RISE * st.t : 0; },
     trigger(x, z) {
       const st = stairAt(x, z);
@@ -88,6 +94,7 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
     },
     label() { return 'CATHEDRAL · LEVEL ' + level; },
     update(dt, elapsed, pos) {
+      enemies?.update(dt, pos);
       const flame = materials.flame.userData.shader; if (flame) flame.uniforms.uTime.value = elapsed;
       // Doors swing open away from you as you walk up to them.
       for (const d of doors) {
@@ -148,10 +155,12 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
       c.fillStyle = '#9a8f78'; c.font = '13px Georgia'; c.textAlign = 'left'; c.fillText('Cathedral · Level ' + level, 12, S - 12);
     },
     dispose() {
+      enemies?.dispose();
       group.traverse(o => o.geometry?.dispose());
       scene.clear();
     }
   };
+  enemies = createEnemies({L, level, scene, doors, onPlayerHit, allowed: (x, z, r) => area.allowed(x, z, r, null), height: (x, z) => area.height(x, z)});
   return area;
 }
 export {HALL, CELL};

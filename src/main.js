@@ -9,7 +9,7 @@ import {createDungeonArea} from './dungeon/area.js';
 import {MAX_LEVEL} from './dungeon/generate.js';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search),review=params.has('review');
-let magic,renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
+let magic,hp=100,hurtFlash=0,lastHurt=-99,hurtShell,renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
 let previousTime=0,elapsed=0,mapOpen=false,frames=0,frameTime=0,testWalk=0;
 const keys=new Set(),touchMove={x:0,y:0},direction=new THREE.Vector3(),head=new THREE.Vector3(),afterTurn=new THREE.Vector3();
 const vrVelocity=new THREE.Vector3(),vrTarget=new THREE.Vector3(),vrForward=new THREE.Vector3(),vrRight=new THREE.Vector3(),worldUp=new THREE.Vector3(0,1,0);
@@ -45,10 +45,13 @@ function init(){
  for(let i=0;i<2;i++){const l=new THREE.PointLight(0xff9c46,13,8,2);scene.add(l);lights.push(l);}
  townArea=createTownArea();area=townArea;
  // Playground's gesture-charged magic blast (hold A, palms facing, oscillate, push to fire).
- magic=createMagicBlast({scene,renderer,camera,rig,hands,hitTest:createAreaHitTest(()=>area)});window.diabMagic=magic;
+ magic=createMagicBlast({scene,renderer,camera,rig,hands,hitTest:createAreaHitTest(()=>area),onHit:(hit,power)=>area.blast?.(hit.point,power,hit.enemy)});window.diabMagic=magic;
  // Head-locked helpers: a fade shell for area changes, the carried light, and the VR automap.
  fader=new THREE.Mesh(new THREE.SphereGeometry(.3,16,8),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0,side:THREE.BackSide,depthTest:false,depthWrite:false,fog:false}));
  fader.renderOrder=1000;fader.visible=false;camera.add(fader);
+ // Red flash when a skeleton lands a hit; pulses faintly while health is low.
+ hurtShell=new THREE.Mesh(new THREE.SphereGeometry(.29,16,8),new THREE.MeshBasicMaterial({color:0x8a0000,transparent:true,opacity:0,side:THREE.BackSide,depthTest:false,depthWrite:false,fog:false}));
+ hurtShell.renderOrder=999;hurtShell.visible=false;camera.add(hurtShell);
  lantern=new THREE.PointLight(0xffd2a8,15,12,1.5);lantern.position.set(.12,-.25,-.15);lantern.visible=false;camera.add(lantern);
  const mc=document.createElement('canvas');mc.width=mc.height=512;vrMapTex=new THREE.CanvasTexture(mc);vrMapTex.colorSpace=THREE.SRGBColorSpace;
  vrMap=new THREE.Mesh(new THREE.PlaneGeometry(.36,.36),new THREE.MeshBasicMaterial({map:vrMapTex,transparent:true,opacity:.93,depthTest:false,depthWrite:false,fog:false}));
@@ -56,7 +59,7 @@ function init(){
  const aspect=innerWidth/innerHeight;overheadCamera=new THREE.OrthographicCamera(-118*aspect,118*aspect,118,-118,.1,600);overheadCamera.position.set(135,170,135);overheadCamera.lookAt(0,0,0);
  setView('square');setupControls();
  $('loading').hidden=true;$('welcome').hidden=false;
- if(review){window.__diab={place:(x,z,y)=>placePlayer(x,z,y),look:v=>{pitch=v;},enter:t=>enterArea(t),area:()=>area};$('review').hidden=false;$('review-view').value=params.get('view')||'square';setView($('review-view').value);enterScreen();}
+ if(review){window.__diab={hp:()=>hp,place:(x,z,y)=>placePlayer(x,z,y),look:v=>{pitch=v;},enter:t=>enterArea(t),area:()=>area};$('review').hidden=false;$('review-view').value=params.get('view')||'square';setView($('review-view').value);enterScreen();}
  renderer.setAnimationLoop(frame);probeVR();
 }
 function setView(id){
@@ -178,7 +181,7 @@ function frame(ms,xrFrame){
  const pos=playerPosition();
  area.update(dt,elapsed,pos);
  if(started&&!transition&&cameraMode==='ground'){const t=area.trigger(pos.x,pos.z);if(t)beginTransition(t);}
- updateTransition(dt);
+ updateTransition(dt);updateHealth(dt);
  if(renderer.xr.isPresenting){vrMap.visible=mapHeld&&!transition;if(vrMap.visible&&frames%6===0){area.drawMap(vrMapTex.image.getContext('2d'),512,pos,playerYaw());vrMapTex.needsUpdate=true;}}else vrMap.visible=false;
  lantern.visible=area!==townArea;lantern.intensity=15*(1+Math.sin(elapsed*6.1)*.03);
  magic.update(dt,xrFrame);
@@ -187,7 +190,7 @@ function frame(ms,xrFrame){
  frames++;frameTime+=Math.max(.001,(ms-(frame.lastMs||ms-16))/1000);frame.lastMs=ms;
  if(frames%20===0){
   const info=renderer.info.render,text=Math.round(frames/frameTime)+' fps · '+info.calls+' draws · '+Math.round(info.triangles/1000)+'k tris';
-  $('stats').textContent=text+'\n'+rig.position.x.toFixed(1)+', '+rig.position.z.toFixed(1)+(area===townArea?'':' · seed '+runSeed);
+  $('stats').textContent=text+'\n'+rig.position.x.toFixed(1)+', '+rig.position.z.toFixed(1)+(area===townArea?'':' · seed '+runSeed)+' · HP '+Math.ceil(hp);
   if(review)$('review-status').textContent=text+' | '+rig.position.x.toFixed(1)+', '+rig.position.z.toFixed(1)+' | '+area.label();
   if(mapOpen)drawMap();updateLocation();
  }
@@ -282,14 +285,28 @@ function enterArea(target){
  if(target.to==='town')next=townArea;
  else{
   const level=Math.max(1,Math.min(MAX_LEVEL,target.level));
-  if(!dungeonArea||dungeonArea.level!==level){dungeonArea?.dispose();dungeonArea=createDungeonArea({level,runSeed,baseMaterials:world.materials});}
+  if(!dungeonArea||dungeonArea.level!==level){dungeonArea?.dispose();dungeonArea=createDungeonArea({level,runSeed,baseMaterials:world.materials,onPlayerHit:playerHit});}
   next=dungeonArea;
  }
  if(next===townArea&&dungeonArea){dungeonArea.dispose();dungeonArea=null;}
  area=next;scene=next.scene;scene.add(rig);magic.setScene(scene);
+ if(target.died||next===townArea&&hp<=0)hp=100;
  camera.far=next.far;camera.updateProjectionMatrix();
  const a=next.arrivals[target.arrive]||next.home;placePlayer(a.x,a.z,a.yaw);
  if(mapOpen)toggleMap();updateLocation();
+}
+/** A skeleton's sword connects: flash, buzz, and back to town if that was the last of your health. */
+function playerHit(amount){
+ if(transition||hp<=0)return;
+ hp=Math.max(0,hp-amount);hurtFlash=1;lastHurt=elapsed;
+ for(const s of hands?.states||[]){const a=s.inputSource?.gamepad?.hapticActuators?.[0];if(a?.pulse)try{Promise.resolve(a.pulse(.9,140)).catch(()=>{});}catch{}}
+ if(hp<=0)beginTransition({to:'town',arrive:'square',died:true});
+}
+function updateHealth(dt){
+ if(hp>0&&hp<100&&elapsed-lastHurt>5)hp=Math.min(100,hp+4*dt);   // slow recovery once out of the fight
+ hurtFlash=Math.max(0,hurtFlash-dt*2.2);
+ const low=hp<35?(.5+.5*Math.sin(elapsed*5))*(1-hp/35)*.22:0;
+ hurtShell.material.opacity=Math.min(.6,hurtFlash*.5+low);hurtShell.visible=hurtShell.material.opacity>.01;
 }
 function beginTransition(target){transition={target,phase:'out',t:0};fader.visible=true;}
 function updateTransition(dt){
