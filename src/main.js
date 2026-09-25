@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import {createVRHands} from './hands.js';
+import {createMagicBlast} from './magic/magic-blast.js';
+import {createAreaHitTest} from './magic/area-hit.js';
 import {buildWorld,walkHeight,waterBlocked} from './world.js';
 import {canStand} from './geometry.js';
 import {spawn,p,views,buildings,cathedral,roads,riverTraces} from './layout.js';
@@ -7,7 +9,7 @@ import {createDungeonArea} from './dungeon/area.js';
 import {MAX_LEVEL} from './dungeon/generate.js';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search),review=params.has('review');
-let renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
+let magic,renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
 let previousTime=0,elapsed=0,mapOpen=false,frames=0,frameTime=0,testWalk=0;
 const keys=new Set(),touchMove={x:0,y:0},direction=new THREE.Vector3(),head=new THREE.Vector3(),afterTurn=new THREE.Vector3();
 const vrVelocity=new THREE.Vector3(),vrTarget=new THREE.Vector3(),vrForward=new THREE.Vector3(),vrRight=new THREE.Vector3(),worldUp=new THREE.Vector3(0,1,0);
@@ -42,6 +44,8 @@ function init(){
  world=buildWorld(scene);
  for(let i=0;i<2;i++){const l=new THREE.PointLight(0xff9c46,13,8,2);scene.add(l);lights.push(l);}
  townArea=createTownArea();area=townArea;
+ // Playground's gesture-charged magic blast (hold A, palms facing, oscillate, push to fire).
+ magic=createMagicBlast({scene,renderer,camera,rig,hands,hitTest:createAreaHitTest(()=>area)});window.diabMagic=magic;
  // Head-locked helpers: a fade shell for area changes, the carried light, and the VR automap.
  fader=new THREE.Mesh(new THREE.SphereGeometry(.3,16,8),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0,side:THREE.BackSide,depthTest:false,depthWrite:false,fog:false}));
  fader.renderOrder=1000;fader.visible=false;camera.add(fader);
@@ -130,7 +134,7 @@ function xrInput(dt){
    mapHeld=!!(pad.buttons[4]?.pressed||pad.buttons[5]?.pressed);
   }else{
    if(axes.length>=2)turn=deadzone(axes[axis]||0,.15);
-   aPressed=!!pad.buttons[4]?.pressed;
+   aPressed=!!pad.buttons[5]?.pressed; // B: back to the start point (A is the magic blast)
   }
  }
 
@@ -159,7 +163,7 @@ function xrInput(dt){
  if(aPressed&&!previousA&&!transition){const h=area.home;placePlayer(h.x,h.z,h.yaw);}
  previousA=aPressed;
 }
-function frame(ms){
+function frame(ms,xrFrame){
  const dt=Math.min((ms-previousTime)/1000||.016,.045);previousTime=ms;elapsed+=dt;
  if(renderer.xr.isPresenting&&session)xrInput(dt);
  else if(started&&!transition&&cameraMode==='ground'&&$('settings').hidden&&!mapOpen){
@@ -177,6 +181,7 @@ function frame(ms){
  updateTransition(dt);
  if(renderer.xr.isPresenting){vrMap.visible=mapHeld&&!transition;if(vrMap.visible&&frames%6===0){area.drawMap(vrMapTex.image.getContext('2d'),512,pos,playerYaw());vrMapTex.needsUpdate=true;}}else vrMap.visible=false;
  lantern.visible=area!==townArea;lantern.intensity=15*(1+Math.sin(elapsed*6.1)*.03);
+ magic.update(dt,xrFrame);
  hands?.update(dt);
  renderer.render(scene,cameraMode==='overhead'?overheadCamera:camera);
  frames++;frameTime+=Math.max(.001,(ms-(frame.lastMs||ms-16))/1000);frame.lastMs=ms;
@@ -241,6 +246,7 @@ function createTownArea(){
   arrivals:{square:{x:spawn.x,z:spawn.z,yaw:0},cathedral:{x:door.x,z:door.z+2.6,yaw:Math.PI}},
   get home(){return this.arrivals.square;},
   allowed:(x,z)=>canStand(x,z,world.colliders)&&!waterBlocked(x,z),
+  solid:(x,z)=>!canStand(x,z,world.colliders,.04),
   height:walkHeight,
   // Walking into the cathedral's great doors takes you down into level 1.
   trigger:(x,z)=>Math.abs(x-door.x)<1.4&&z<door.z+.55&&z>door.z-1.5?{to:'dungeon',level:1,arrive:'up'}:null,
@@ -280,7 +286,7 @@ function enterArea(target){
   next=dungeonArea;
  }
  if(next===townArea&&dungeonArea){dungeonArea.dispose();dungeonArea=null;}
- area=next;scene=next.scene;scene.add(rig);
+ area=next;scene=next.scene;scene.add(rig);magic.setScene(scene);
  camera.far=next.far;camera.updateProjectionMatrix();
  const a=next.arrivals[target.arrive]||next.home;placePlayer(a.x,a.z,a.yaw);
  if(mapOpen)toggleMap();updateLocation();

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {canStand} from '../geometry.js';
 import {makeDungeonMaterials} from '../materials.js';
 import {generateLevel, levelSeed, toWorld, toGrid, SOLID, HALL, CELL, DIRS} from './generate.js';
-import {buildLevel, STAIR_RISE} from './build.js';
+import {buildLevel, STAIR_RISE, WALL_H} from './build.js';
 import {preloadProps, placeBarrels, addBarrels, BARREL_R} from './props.js';
 
 preloadProps();
@@ -78,6 +78,7 @@ export function createDungeonArea({level, runSeed, baseMaterials}) {
       }
       return canStand(x, z, colliders, r);
     },
+    ceiling: WALL_H,
     height(x, z) { const st = stairAt(x, z); return st ? (st.s.kind === 'down' ? -1 : 1) * STAIR_RISE * st.t : 0; },
     trigger(x, z) {
       const st = stairAt(x, z);
