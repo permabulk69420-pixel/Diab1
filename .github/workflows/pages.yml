@@ -39,13 +39,17 @@ jobs:
           test -n "$CHROME"
 
           timeout 90s "$CHROME" --headless=new --no-sandbox --disable-dev-shm-usage --enable-unsafe-swiftshader \
-            --hide-scrollbars --window-size=1536,864 --virtual-time-budget=20000 \
-            --screenshot=vr-proof-one.png "http://127.0.0.1:4173/?vrproof=one"
+            --hide-scrollbars --window-size=1536,864 --virtual-time-budget=12000 \
+            --screenshot=vr-proof-one.png "http://127.0.0.1:4173/?vrproof=one" > /tmp/vr-one.log 2>&1 &
+          ONE_PID=$!
 
           timeout 90s "$CHROME" --headless=new --no-sandbox --disable-dev-shm-usage --enable-unsafe-swiftshader \
-            --hide-scrollbars --window-size=1536,864 --virtual-time-budget=20000 \
-            --screenshot=vr-proof-two.png "http://127.0.0.1:4173/?vrproof=two"
+            --hide-scrollbars --window-size=1536,864 --virtual-time-budget=12000 \
+            --screenshot=vr-proof-two.png "http://127.0.0.1:4173/?vrproof=two" > /tmp/vr-two.log 2>&1 &
+          TWO_PID=$!
 
+          wait "$ONE_PID"
+          wait "$TWO_PID"
           test -s vr-proof-one.png
           test -s vr-proof-two.png
           kill "$PREVIEW_PID" || true
