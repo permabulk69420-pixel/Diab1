@@ -73,8 +73,8 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
 
       // Both supplied swords are authored lengthwise on local +Y. These two
       // points sit in the handle, not at the wrist/controller origin.
-      entry.primaryLocal.set(0,box.min.y+size.y*.205,0);
-      entry.secondaryLocal.set(0,box.min.y+size.y*.09,0);
+      entry.primaryLocal.set(0,box.min.y+size.y*.225,0);
+      entry.secondaryLocal.set(0,box.min.y+size.y*.14,0);
 
       entry.homeY=-box.min.y;
       model.position.set(0,entry.homeY,0);
