@@ -14,10 +14,21 @@ const yAxis=new THREE.Vector3();
 const zAxis=new THREE.Vector3();
 const xAxis=new THREE.Vector3();
 const referenceAxis=new THREE.Vector3();
+const localYAxis=new THREE.Vector3();
+const localZAxis=new THREE.Vector3();
+const localXAxis=new THREE.Vector3();
+const localReferenceAxis=new THREE.Vector3();
+const localMidpoint=new THREE.Vector3();
+const worldMidpoint=new THREE.Vector3();
+const rotatedMidpoint=new THREE.Vector3();
 const primaryGripQuat=new THREE.Quaternion();
 const weaponQuat=new THREE.Quaternion();
-const basis=new THREE.Matrix4();
+const worldBasis=new THREE.Matrix4();
+const localBasis=new THREE.Matrix4();
+const localBasisInverse=new THREE.Matrix4();
+const rotationMatrix=new THREE.Matrix4();
 const rotatedPrimary=new THREE.Vector3();
+const LOCAL_X=new THREE.Vector3(1,0,0);
 const LOCAL_Z=new THREE.Vector3(0,0,1);
 const ONE_HAND_QUAT=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.PI));
 
@@ -140,26 +151,55 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     secondary.getWorldPosition(secondaryWorld);
 
     yAxis.subVectors(primaryWorld,secondaryWorld);
-    if(yAxis.lengthSq()<.004)return;
+    localYAxis.subVectors(entry.primaryLocal,entry.secondaryLocal);
+    if(yAxis.lengthSq()<.004||localYAxis.lengthSq()<.000001)return;
     yAxis.normalize();
+    localYAxis.normalize();
 
+    // Use the primary palm orientation only to resolve roll around the handle.
+    // The handle axis itself is solved from both palms.
     primary.getWorldQuaternion(primaryGripQuat);
     referenceAxis.copy(LOCAL_Z).applyQuaternion(primaryGripQuat);
     zAxis.copy(referenceAxis).addScaledVector(yAxis,-referenceAxis.dot(yAxis));
     if(zAxis.lengthSq()<.0001){
-      referenceAxis.set(1,0,0).applyQuaternion(primaryGripQuat);
+      referenceAxis.copy(LOCAL_X).applyQuaternion(primaryGripQuat);
       zAxis.copy(referenceAxis).addScaledVector(yAxis,-referenceAxis.dot(yAxis));
     }
     zAxis.normalize();
     xAxis.crossVectors(yAxis,zAxis).normalize();
     zAxis.crossVectors(xAxis,yAxis).normalize();
 
-    basis.makeBasis(xAxis,yAxis,zAxis);
-    weaponQuat.setFromRotationMatrix(basis);
+    // Build the matching model-space handle frame. This keeps the solve valid
+    // even if the authored handle points stop being perfectly aligned to +Y.
+    localReferenceAxis.copy(LOCAL_Z);
+    localZAxis.copy(localReferenceAxis)
+      .addScaledVector(localYAxis,-localReferenceAxis.dot(localYAxis));
+    if(localZAxis.lengthSq()<.0001){
+      localReferenceAxis.copy(LOCAL_X);
+      localZAxis.copy(localReferenceAxis)
+        .addScaledVector(localYAxis,-localReferenceAxis.dot(localYAxis));
+    }
+    localZAxis.normalize();
+    localXAxis.crossVectors(localYAxis,localZAxis).normalize();
+    localZAxis.crossVectors(localXAxis,localYAxis).normalize();
+
+    worldBasis.makeBasis(xAxis,yAxis,zAxis);
+    localBasis.makeBasis(localXAxis,localYAxis,localZAxis);
+    localBasisInverse.copy(localBasis).transpose();
+    rotationMatrix.multiplyMatrices(worldBasis,localBasisInverse);
+    weaponQuat.setFromRotationMatrix(rotationMatrix);
+
+    // True two-point rigid-body fit: align the handle segment direction and
+    // the centroids of the two handle points / two palms. Do not pin the sword
+    // to the primary hand. If hand spacing differs slightly from the authored
+    // handle-point spacing, the residual is shared evenly instead of turning
+    // the weapon into a pivot around one hand.
+    localMidpoint.copy(entry.primaryLocal).add(entry.secondaryLocal).multiplyScalar(.5);
+    worldMidpoint.copy(primaryWorld).add(secondaryWorld).multiplyScalar(.5);
+    rotatedMidpoint.copy(localMidpoint).applyQuaternion(weaponQuat);
 
     entry.model.quaternion.copy(weaponQuat);
-    rotatedPrimary.copy(entry.primaryLocal).applyQuaternion(weaponQuat);
-    entry.model.position.copy(primaryWorld).sub(rotatedPrimary);
+    entry.model.position.copy(worldMidpoint).sub(rotatedMidpoint);
     entry.model.updateMatrixWorld(true);
   }
 
