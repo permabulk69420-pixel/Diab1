@@ -15,6 +15,7 @@ const HAND_GRIP_OFFSETS = Object.freeze({
 });
 
 const loader = new GLTFLoader();
+const gripMatrix = new THREE.Matrix4();
 
 function prepareModel(root) {
   root.traverse((child) => {
@@ -60,14 +61,19 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
   const states = controllers.map((controller, index) => {
     parent.add(controller);
     parent.add(grips[index]);
+    const objectGrip = new THREE.Group();
+    objectGrip.name = `controller-${index}-held-object-anchor`;
+    grips[index].add(objectGrip);
 
     return {
       controller,
       grip: grips[index],
+      objectGrip,
       inputSource: null,
       handedness: '',
       handAnchor: null,
       handRoot: null,
+      gripSocket: null,
       indexTip: null,
       mixerState: null,
       pointing: false,
@@ -75,10 +81,30 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
     };
   });
 
+  function resetObjectGrip(state) {
+    if (state.objectGrip.parent !== state.grip) state.grip.add(state.objectGrip);
+    state.objectGrip.position.set(0, 0, 0);
+    state.objectGrip.quaternion.identity();
+    state.objectGrip.scale.set(1, 1, 1);
+    state.objectGrip.updateMatrixWorld(true);
+  }
+
+  function syncObjectGrip(state) {
+    if (!state.gripSocket) return;
+    if (state.objectGrip.parent !== state.grip) state.grip.add(state.objectGrip);
+    state.grip.updateWorldMatrix(true, false);
+    state.gripSocket.updateWorldMatrix(true, false);
+    gripMatrix.copy(state.grip.matrixWorld).invert().multiply(state.gripSocket.matrixWorld)
+      .decompose(state.objectGrip.position, state.objectGrip.quaternion, state.objectGrip.scale);
+    state.objectGrip.updateMatrixWorld(true);
+  }
+
   function detach(state) {
+    resetObjectGrip(state);
     if (state.handAnchor) state.grip.remove(state.handAnchor);
     state.handAnchor = null;
     state.handRoot = null;
+    state.gripSocket = null;
     state.indexTip = null;
     state.mixerState = null;
   }
@@ -102,11 +128,13 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
     state.grip.add(anchor);
 
     const side = handedness === 'left' ? 'l' : 'r';
+    state.gripSocket = root.getObjectByName(`b_${side}_grip`) || null;
     state.indexTip = root.getObjectByName(`b_${side}_index_ignore`) || null;
     state.handAnchor = anchor;
     state.handRoot = root;
     state.mixerState = createActions(root, gltf.animations);
     setPose(state.mixerState, 'Open', 0);
+    syncObjectGrip(state);
   }
 
   for (const state of states) {
@@ -171,6 +199,7 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
       }
 
       state.mixerState.mixer.update(dt);
+      syncObjectGrip(state);
     }
   }
 
@@ -178,11 +207,17 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
     return states.find((state) => state.handedness === handedness) || null;
   }
 
+  function getObjectGrip(handedness) {
+    return getState(handedness)?.objectGrip || null;
+  }
+
   return {
     update,
     states,
     controllers,
     grips,
-    getState
+    objectGrips: states.map((state) => state.objectGrip),
+    getState,
+    getObjectGrip
   };
 }
