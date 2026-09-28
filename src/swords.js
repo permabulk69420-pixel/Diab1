@@ -10,26 +10,17 @@ const loader=new GLTFLoader();
 const primaryWorld=new THREE.Vector3();
 const secondaryWorld=new THREE.Vector3();
 const candidateWorld=new THREE.Vector3();
-const yAxis=new THREE.Vector3();
-const zAxis=new THREE.Vector3();
-const xAxis=new THREE.Vector3();
-const referenceAxis=new THREE.Vector3();
-const localYAxis=new THREE.Vector3();
-const localZAxis=new THREE.Vector3();
-const localXAxis=new THREE.Vector3();
-const localReferenceAxis=new THREE.Vector3();
-const localMidpoint=new THREE.Vector3();
-const worldMidpoint=new THREE.Vector3();
-const rotatedMidpoint=new THREE.Vector3();
-const primaryGripQuat=new THREE.Quaternion();
-const weaponQuat=new THREE.Quaternion();
-const worldBasis=new THREE.Matrix4();
-const localBasis=new THREE.Matrix4();
-const localBasisInverse=new THREE.Matrix4();
-const rotationMatrix=new THREE.Matrix4();
+const currentMidpoint=new THREE.Vector3();
+const currentDirection=new THREE.Vector3();
+const currentPrimaryQuat=new THREE.Quaternion();
+const aimDelta=new THREE.Quaternion();
+const predictedPrimaryQuat=new THREE.Quaternion();
+const inversePredictedQuat=new THREE.Quaternion();
+const residualQuat=new THREE.Quaternion();
+const twistQuat=new THREE.Quaternion();
+const fullDelta=new THREE.Quaternion();
+const rotatedOffset=new THREE.Vector3();
 const rotatedPrimary=new THREE.Vector3();
-const LOCAL_X=new THREE.Vector3(1,0,0);
-const LOCAL_Z=new THREE.Vector3(0,0,1);
 const ONE_HAND_QUAT=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.PI));
 
 function assetUrl(path){
@@ -50,6 +41,13 @@ function setGripPose(state,held){
   state.weaponHeld=Boolean(held);
 }
 
+function extractTwist(quaternion,axis,target){
+  const dot=quaternion.x*axis.x+quaternion.y*axis.y+quaternion.z*axis.z;
+  target.set(axis.x*dot,axis.y*dot,axis.z*dot,quaternion.w);
+  if(target.lengthSq()<1e-8)return target.identity();
+  return target.normalize();
+}
+
 export function createSwords({scene,hands,spawn,height,onError=console.warn}){
   const entries=SPECS.map(spec=>{
     const x=spawn.x+spec.offset[0],z=spawn.z+spec.offset[1];
@@ -58,7 +56,7 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     scene.add(anchor);
 
     const entry={
-      spec,anchor,model:null,holder:null,supporter:null,
+      spec,anchor,model:null,holder:null,supporter:null,twoHand:null,
       primaryLocal:new THREE.Vector3(),
       secondaryLocal:new THREE.Vector3(),
       homeY:0
@@ -112,6 +110,7 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     state.swordSupportEntry=null;
     setGripPose(state,false);
     entry.supporter=null;
+    entry.twoHand=null;
   }
 
   function attachOneHand(entry,state){
@@ -123,6 +122,7 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     entry.model.position.copy(rotatedPrimary).multiplyScalar(-1);
     entry.model.scale.set(1,1,1);
     entry.model.updateMatrixWorld(true);
+    entry.twoHand=null;
     entry.holder=state;
     held.set(state,entry);
     setGripPose(state,true);
@@ -142,64 +142,69 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     entry.holder=null;
   }
 
-  function solveTwoHand(entry){
+  function beginTwoHand(entry){
     const primary=entry.holder?.objectGrip||entry.holder?.grip;
     const secondary=entry.supporter?.objectGrip||entry.supporter?.grip;
-    if(!primary||!secondary||!entry.model)return;
+    if(!primary||!secondary||!entry.model)return false;
 
     primary.getWorldPosition(primaryWorld);
     secondary.getWorldPosition(secondaryWorld);
+    currentDirection.subVectors(primaryWorld,secondaryWorld);
+    if(currentDirection.lengthSq()<.004)return false;
+    currentDirection.normalize();
 
-    yAxis.subVectors(primaryWorld,secondaryWorld);
-    localYAxis.subVectors(entry.primaryLocal,entry.secondaryLocal);
-    if(yAxis.lengthSq()<.004||localYAxis.lengthSq()<.000001)return;
-    yAxis.normalize();
-    localYAxis.normalize();
+    const startObjectPosition=new THREE.Vector3();
+    const startObjectQuaternion=new THREE.Quaternion();
+    const startPrimaryQuaternion=new THREE.Quaternion();
+    const startMidpoint=new THREE.Vector3()
+      .copy(primaryWorld).add(secondaryWorld).multiplyScalar(.5);
 
-    // Use the primary palm orientation only to resolve roll around the handle.
-    // The handle axis itself is solved from both palms.
-    primary.getWorldQuaternion(primaryGripQuat);
-    referenceAxis.copy(LOCAL_Z).applyQuaternion(primaryGripQuat);
-    zAxis.copy(referenceAxis).addScaledVector(yAxis,-referenceAxis.dot(yAxis));
-    if(zAxis.lengthSq()<.0001){
-      referenceAxis.copy(LOCAL_X).applyQuaternion(primaryGripQuat);
-      zAxis.copy(referenceAxis).addScaledVector(yAxis,-referenceAxis.dot(yAxis));
-    }
-    zAxis.normalize();
-    xAxis.crossVectors(yAxis,zAxis).normalize();
-    zAxis.crossVectors(xAxis,yAxis).normalize();
+    entry.model.getWorldPosition(startObjectPosition);
+    entry.model.getWorldQuaternion(startObjectQuaternion);
+    primary.getWorldQuaternion(startPrimaryQuaternion);
 
-    // Build the matching model-space handle frame. This keeps the solve valid
-    // even if the authored handle points stop being perfectly aligned to +Y.
-    localReferenceAxis.copy(LOCAL_Z);
-    localZAxis.copy(localReferenceAxis)
-      .addScaledVector(localYAxis,-localReferenceAxis.dot(localYAxis));
-    if(localZAxis.lengthSq()<.0001){
-      localReferenceAxis.copy(LOCAL_X);
-      localZAxis.copy(localReferenceAxis)
-        .addScaledVector(localYAxis,-localReferenceAxis.dot(localYAxis));
-    }
-    localZAxis.normalize();
-    localXAxis.crossVectors(localYAxis,localZAxis).normalize();
-    localZAxis.crossVectors(localXAxis,localYAxis).normalize();
+    entry.twoHand={
+      startMidpoint,
+      startDirection:currentDirection.clone(),
+      startObjectPosition,
+      startObjectQuaternion,
+      startPrimaryQuaternion,
+      startOffset:startObjectPosition.clone().sub(startMidpoint)
+    };
+    return true;
+  }
 
-    worldBasis.makeBasis(xAxis,yAxis,zAxis);
-    localBasis.makeBasis(localXAxis,localYAxis,localZAxis);
-    localBasisInverse.copy(localBasis).transpose();
-    rotationMatrix.multiplyMatrices(worldBasis,localBasisInverse);
-    weaponQuat.setFromRotationMatrix(rotationMatrix);
+  function solveTwoHand(entry){
+    const primary=entry.holder?.objectGrip||entry.holder?.grip;
+    const secondary=entry.supporter?.objectGrip||entry.supporter?.grip;
+    const state=entry.twoHand;
+    if(!primary||!secondary||!entry.model||!state)return;
 
-    // True two-point rigid-body fit: align the handle segment direction and
-    // the centroids of the two handle points / two palms. Do not pin the sword
-    // to the primary hand. If hand spacing differs slightly from the authored
-    // handle-point spacing, the residual is shared evenly instead of turning
-    // the weapon into a pivot around one hand.
-    localMidpoint.copy(entry.primaryLocal).add(entry.secondaryLocal).multiplyScalar(.5);
-    worldMidpoint.copy(primaryWorld).add(secondaryWorld).multiplyScalar(.5);
-    rotatedMidpoint.copy(localMidpoint).applyQuaternion(weaponQuat);
+    primary.getWorldPosition(primaryWorld);
+    secondary.getWorldPosition(secondaryWorld);
+    currentDirection.subVectors(primaryWorld,secondaryWorld);
+    if(currentDirection.lengthSq()<.004)return;
+    currentDirection.normalize();
+    currentMidpoint.copy(primaryWorld).add(secondaryWorld).multiplyScalar(.5);
 
-    entry.model.quaternion.copy(weaponQuat);
-    entry.model.position.copy(worldMidpoint).sub(rotatedMidpoint);
+    // Two-grab transform: preserve the sword pose from the instant the second
+    // hand joins, then apply relative two-hand motion. Translation follows the
+    // centroid, so neither hand becomes an artificial pivot.
+    aimDelta.setFromUnitVectors(state.startDirection,currentDirection);
+
+    // The hand-to-hand line controls pitch/yaw. The primary palm contributes
+    // only twist about that line so wrist roll still rolls the blade naturally.
+    primary.getWorldQuaternion(currentPrimaryQuat);
+    predictedPrimaryQuat.copy(aimDelta).multiply(state.startPrimaryQuaternion);
+    inversePredictedQuat.copy(predictedPrimaryQuat).invert();
+    residualQuat.copy(currentPrimaryQuat).multiply(inversePredictedQuat);
+    extractTwist(residualQuat,currentDirection,twistQuat);
+    fullDelta.copy(twistQuat).multiply(aimDelta);
+
+    entry.model.quaternion.copy(fullDelta).multiply(state.startObjectQuaternion);
+    rotatedOffset.copy(state.startOffset).applyQuaternion(fullDelta);
+    entry.model.position.copy(currentMidpoint).add(rotatedOffset);
+    entry.model.scale.set(1,1,1);
     entry.model.updateMatrixWorld(true);
   }
 
@@ -209,7 +214,8 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     entry.supporter=state;
     state.swordSupportEntry=entry;
     setGripPose(state,true);
-    solveTwoHand(entry);
+    if(beginTwoHand(entry))solveTwoHand(entry);
+    else clearSupport(entry);
   }
 
   function endSupport(entry){
