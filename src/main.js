@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {createVRHands} from './hands.js';
+import {createSwordTrial} from './swords.js';
 import {createMagicBlast} from './magic/magic-blast.js';
 import {createAreaHitTest} from './magic/area-hit.js';
 import {buildWorld,walkHeight,waterBlocked} from './world.js';
@@ -9,7 +10,7 @@ import {createDungeonArea} from './dungeon/area.js';
 import {MAX_LEVEL} from './dungeon/generate.js';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search),review=params.has('review');
-let magic,hp=100,hurtFlash=0,lastHurt=-99,hurtShell,renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
+let magic,swords,hp=100,hurtFlash=0,lastHurt=-99,hurtShell,renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
 let previousTime=0,elapsed=0,mapOpen=false,frames=0,frameTime=0,testWalk=0;
 const keys=new Set(),touchMove={x:0,y:0},direction=new THREE.Vector3(),head=new THREE.Vector3(),afterTurn=new THREE.Vector3();
 const vrVelocity=new THREE.Vector3(),vrTarget=new THREE.Vector3(),vrForward=new THREE.Vector3(),vrRight=new THREE.Vector3(),worldUp=new THREE.Vector3(0,1,0);
@@ -42,6 +43,7 @@ function init(){
  rig=new THREE.Group();scene.add(rig);rig.add(camera);rig.position.set(spawn.x,0,spawn.z);
  hands=createVRHands({renderer,parent:rig,onError:message=>console.warn('[Diab1 hands]',message)});
  world=buildWorld(scene);
+ swords=createSwordTrial({scene:townScene,hands,spawn,height:walkHeight,onError:message=>console.warn('[Diab1 swords]',message)});
  for(let i=0;i<2;i++){const l=new THREE.PointLight(0xff9c46,13,8,2);scene.add(l);lights.push(l);}
  townArea=createTownArea();area=townArea;
  // Playground's gesture-charged magic blast (hold A, palms facing, oscillate, push to fire).
@@ -185,6 +187,7 @@ function frame(ms,xrFrame){
  if(renderer.xr.isPresenting){vrMap.visible=mapHeld&&!transition;if(vrMap.visible&&frames%6===0){area.drawMap(vrMapTex.image.getContext('2d'),512,pos,playerYaw());vrMapTex.needsUpdate=true;}}else vrMap.visible=false;
  lantern.visible=area!==townArea;lantern.intensity=15*(1+Math.sin(elapsed*6.1)*.03);
  magic.update(dt,xrFrame);
+ swords?.update(dt,area===townArea,renderer.xr.isPresenting);
  hands?.update(dt);
  renderer.render(scene,cameraMode==='overhead'?overheadCamera:camera);
  frames++;frameTime+=Math.max(.001,(ms-(frame.lastMs||ms-16))/1000);frame.lastMs=ms;
