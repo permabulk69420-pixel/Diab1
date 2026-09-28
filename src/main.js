@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {createVRHands} from './hands.js';
-import {createSwordTrial} from './swords.js';
+import {createSwords} from './swords.js';
 import {createMagicBlast} from './magic/magic-blast.js';
 import {createAreaHitTest} from './magic/area-hit.js';
 import {buildWorld,walkHeight,waterBlocked} from './world.js';
@@ -43,7 +43,7 @@ function init(){
  rig=new THREE.Group();scene.add(rig);rig.add(camera);rig.position.set(spawn.x,0,spawn.z);
  hands=createVRHands({renderer,parent:rig,onError:message=>console.warn('[Diab1 hands]',message)});
  world=buildWorld(scene);
- swords=createSwordTrial({scene:townScene,hands,spawn,height:walkHeight,onError:message=>console.warn('[Diab1 swords]',message)});
+ swords=createSwords({scene:townScene,hands,spawn,height:walkHeight,onError:message=>console.warn('[Diab1 swords]',message)});
  for(let i=0;i<2;i++){const l=new THREE.PointLight(0xff9c46,13,8,2);scene.add(l);lights.push(l);}
  townArea=createTownArea();area=townArea;
  // Playground's gesture-charged magic blast (hold A, palms facing, oscillate, push to fire).
