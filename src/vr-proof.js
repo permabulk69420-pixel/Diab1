@@ -12,6 +12,10 @@ function setGrip(pad,value){
 
 export function createVRProof({rig,camera,hands,swords}){
   const rightPad=makePad(),leftPad=makePad();
+  for(const object of [...hands.controllers,...hands.grips]){
+    object.visible=true;
+    object.matrixAutoUpdate=true;
+  }
   hands.controllers[0].dispatchEvent({type:'connected',data:{handedness:'right',gamepad:rightPad}});
   hands.controllers[1].dispatchEvent({type:'connected',data:{handedness:'left',gamepad:leftPad}});
 
