@@ -25,6 +25,9 @@ const palmWorldQuat=new THREE.Quaternion();
 const inverseModelQuat=new THREE.Quaternion();
 const localGripQuat=new THREE.Quaternion();
 const ONE_HAND_QUAT=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.PI));
+const SUPPORT_GRAB_RADIUS=.065;
+const PRIMARY_GRAB_RADIUS=.14;
+const GRAB_PRESS=.55;
 
 function assetUrl(path){
   return new URL(path,document.baseURI).href;
@@ -148,16 +151,27 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     entry.holder=null;
   }
 
-  function captureVisualGrip(entry,state,localPoint){
-    const socket=state?.objectGrip||state?.grip;
-    if(!socket||!entry.model)return;
+  function setTwoHandVisualGrip(entry){
+    const primary=entry.holder?.objectGrip||entry.holder?.grip;
+    if(!primary||!entry.supporter||!entry.model)return;
+
+    // The primary hand is already holding the sword in the canonical one-hand
+    // grip, so use that exact palm-to-sword orientation for BOTH grip slots.
+    // The support hand no longer inherits an arbitrary wrist angle from the
+    // instant it happens to touch the weapon.
     entry.model.updateWorldMatrix(true,false);
-    socket.updateWorldMatrix(true,false);
+    primary.updateWorldMatrix(true,false);
     entry.model.getWorldQuaternion(modelWorldQuat);
-    socket.getWorldQuaternion(palmWorldQuat);
+    primary.getWorldQuaternion(palmWorldQuat);
     inverseModelQuat.copy(modelWorldQuat).invert();
     localGripQuat.copy(inverseModelQuat).multiply(palmWorldQuat);
-    hands.setVisualGripTarget?.(state,entry.model,localPoint,localGripQuat);
+
+    hands.setVisualGripTarget?.(
+      entry.holder,entry.model,entry.primaryLocal,localGripQuat
+    );
+    hands.setVisualGripTarget?.(
+      entry.supporter,entry.model,entry.secondaryLocal,localGripQuat
+    );
   }
 
   function beginTwoHand(entry){
@@ -182,8 +196,7 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
       startPrimaryQuaternion
     };
 
-    captureVisualGrip(entry,entry.holder,entry.primaryLocal);
-    captureVisualGrip(entry,entry.supporter,entry.secondaryLocal);
+    setTwoHandVisualGrip(entry);
     return true;
   }
 
@@ -257,11 +270,15 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
           solveTwoHand(entry);
         }
       }else{
+        // The off hand gets exactly one discrete support socket. It can only
+        // engage on a NEW grip press while its palm is actually at that socket.
+        // Holding grip elsewhere and sweeping through the sword cannot latch it.
         worldPoint(entry.model,entry.secondaryLocal,candidateWorld);
-        let best=null,bestDistance=.17;
+        let best=null,bestDistance=SUPPORT_GRAB_RADIUS;
         for(const state of hands.states){
           if(state===entry.holder||!state.inputSource||held.has(state))continue;
-          if(gripValue(state)<.45)continue;
+          const down=gripValue(state)>GRAB_PRESS;
+          if(!down||state.swordGripDown)continue;
           const socket=state.objectGrip||state.grip;
           socket.getWorldPosition(secondaryWorld);
           const d=secondaryWorld.distanceTo(candidateWorld);
@@ -273,13 +290,13 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
 
     for(const state of hands.states){
       const squeeze=gripValue(state);
-      const down=squeeze>.55;
+      const down=squeeze>GRAB_PRESS;
 
       if(!held.has(state)&&!state.swordSupportEntry&&isVR&&inTown&&down&&!state.swordGripDown){
         const socket=state.objectGrip||state.grip;
         socket.getWorldPosition(primaryWorld);
 
-        let best=null,bestDistance=.30;
+        let best=null,bestDistance=PRIMARY_GRAB_RADIUS;
         for(const entry of entries){
           if(!entry.model||entry.holder)continue;
           worldPoint(entry.model,entry.primaryLocal,candidateWorld);
