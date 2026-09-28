@@ -69,15 +69,14 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
       model.add(sword);
       anchor.add(model);
 
-      const box=new THREE.Box3().setFromObject(model);
-      const size=box.getSize(new THREE.Vector3());
+      const size=scaledBox.getSize(new THREE.Vector3());
 
-      // Both supplied swords are authored lengthwise on local +Y. These two
-      // points sit in the handle, not at the wrist/controller origin.
-      entry.primaryLocal.set(0,box.min.y+size.y*.225,0);
-      entry.secondaryLocal.set(0,box.min.y+size.y*.14,0);
+      // Model-local handle points. Do not derive these after parenting into the
+      // world or the Tristram spawn height contaminates the grip coordinates.
+      entry.primaryLocal.set(0,scaledBox.min.y+size.y*.225,0);
+      entry.secondaryLocal.set(0,scaledBox.min.y+size.y*.14,0);
 
-      entry.homeY=-box.min.y;
+      entry.homeY=-scaledBox.min.y;
       model.position.set(0,entry.homeY,0);
       model.rotation.set(0,0,spec.lean);
 
@@ -140,15 +139,10 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     primary.getWorldPosition(primaryWorld);
     secondary.getWorldPosition(secondaryWorld);
 
-    // Local +Y runs from pommel toward blade. The primary hand is the upper
-    // hand and the support hand is lower, so +Y points support -> primary.
     yAxis.subVectors(primaryWorld,secondaryWorld);
     if(yAxis.lengthSq()<.004)return;
     yAxis.normalize();
 
-    // Preserve roll from the primary palm socket while the second hand controls
-    // the weapon's long axis. This is a rigid two-point solve in world space,
-    // not a child pivot under either controller.
     primary.getWorldQuaternion(primaryGripQuat);
     referenceAxis.copy(LOCAL_Z).applyQuaternion(primaryGripQuat);
     zAxis.copy(referenceAxis).addScaledVector(yAxis,-referenceAxis.dot(yAxis));
