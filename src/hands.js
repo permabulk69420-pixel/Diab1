@@ -16,6 +16,14 @@ const HAND_GRIP_OFFSETS = Object.freeze({
 
 const loader = new GLTFLoader();
 const gripMatrix = new THREE.Matrix4();
+const targetLocalMatrix = new THREE.Matrix4();
+const targetWorldMatrix = new THREE.Matrix4();
+const socketWorldInverse = new THREE.Matrix4();
+const rootWorldMatrix = new THREE.Matrix4();
+const desiredRootWorldMatrix = new THREE.Matrix4();
+const parentWorldInverse = new THREE.Matrix4();
+const desiredRootLocalMatrix = new THREE.Matrix4();
+const unitScale = new THREE.Vector3(1, 1, 1);
 
 function prepareModel(root) {
   root.traverse((child) => {
@@ -76,6 +84,11 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
       gripSocket: null,
       indexTip: null,
       mixerState: null,
+      visualGripTarget: null,
+      visualRestorePosition: new THREE.Vector3(),
+      visualRestoreQuaternion: new THREE.Quaternion(),
+      visualRestoreScale: new THREE.Vector3(1, 1, 1),
+      visualGripApplied: false,
       pointing: false,
       primaryDown: false
     };
@@ -89,8 +102,18 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
     state.objectGrip.updateMatrixWorld(true);
   }
 
+  function restoreVisualGrip(state) {
+    if (!state.visualGripApplied || !state.handRoot) return;
+    state.handRoot.position.copy(state.visualRestorePosition);
+    state.handRoot.quaternion.copy(state.visualRestoreQuaternion);
+    state.handRoot.scale.copy(state.visualRestoreScale);
+    state.handRoot.updateMatrixWorld(true);
+    state.visualGripApplied = false;
+  }
+
   function syncObjectGrip(state) {
     if (!state.gripSocket) return;
+    restoreVisualGrip(state);
     if (state.objectGrip.parent !== state.grip) state.grip.add(state.objectGrip);
     state.grip.updateWorldMatrix(true, false);
     state.gripSocket.updateWorldMatrix(true, false);
@@ -99,7 +122,38 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
     state.objectGrip.updateMatrixWorld(true);
   }
 
+  function applyVisualGrip(state) {
+    const target = state.visualGripTarget;
+    if (!target?.object || !state.handRoot || !state.gripSocket) return;
+
+    restoreVisualGrip(state);
+    state.handRoot.updateWorldMatrix(true, false);
+    state.gripSocket.updateWorldMatrix(true, false);
+    target.object.updateWorldMatrix(true, false);
+
+    state.visualRestorePosition.copy(state.handRoot.position);
+    state.visualRestoreQuaternion.copy(state.handRoot.quaternion);
+    state.visualRestoreScale.copy(state.handRoot.scale);
+
+    targetLocalMatrix.compose(target.position, target.quaternion, unitScale);
+    targetWorldMatrix.multiplyMatrices(target.object.matrixWorld, targetLocalMatrix);
+    socketWorldInverse.copy(state.gripSocket.matrixWorld).invert();
+    rootWorldMatrix.copy(state.handRoot.matrixWorld);
+    desiredRootWorldMatrix.multiplyMatrices(targetWorldMatrix, socketWorldInverse).multiply(rootWorldMatrix);
+
+    const rootParent = state.handRoot.parent;
+    if (!rootParent) return;
+    rootParent.updateWorldMatrix(true, false);
+    parentWorldInverse.copy(rootParent.matrixWorld).invert();
+    desiredRootLocalMatrix.multiplyMatrices(parentWorldInverse, desiredRootWorldMatrix)
+      .decompose(state.handRoot.position, state.handRoot.quaternion, state.handRoot.scale);
+    state.handRoot.updateMatrixWorld(true);
+    state.visualGripApplied = true;
+  }
+
   function detach(state) {
+    restoreVisualGrip(state);
+    state.visualGripTarget = null;
     resetObjectGrip(state);
     if (state.handAnchor) state.grip.remove(state.handAnchor);
     state.handAnchor = null;
@@ -200,7 +254,27 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
 
       state.mixerState.mixer.update(dt);
       syncObjectGrip(state);
+      applyVisualGrip(state);
     }
+  }
+
+  function refreshObjectGrips() {
+    for (const state of states) syncObjectGrip(state);
+  }
+
+  function setVisualGripTarget(state, object, position, quaternion) {
+    if (!state) return;
+    state.visualGripTarget = {
+      object,
+      position: position.clone(),
+      quaternion: quaternion.clone()
+    };
+  }
+
+  function clearVisualGripTarget(state) {
+    if (!state) return;
+    restoreVisualGrip(state);
+    state.visualGripTarget = null;
   }
 
   function getState(handedness) {
@@ -217,6 +291,9 @@ export function createVRHands({ renderer, parent, onError = console.warn }) {
     controllers,
     grips,
     objectGrips: states.map((state) => state.objectGrip),
+    refreshObjectGrips,
+    setVisualGripTarget,
+    clearVisualGripTarget,
     getState,
     getObjectGrip
   };
