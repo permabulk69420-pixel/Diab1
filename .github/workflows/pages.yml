@@ -34,21 +34,30 @@ jobs:
             if curl -sf http://127.0.0.1:4173/ >/dev/null; then break; fi
             sleep 1
           done
+
           CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
           test -n "$CHROME"
-          timeout 90s "$CHROME" --headless=new --no-sandbox --disable-dev-shm-usage --enable-unsafe-swiftshader             --hide-scrollbars --window-size=1536,864 --virtual-time-budget=20000             --screenshot=vr-proof.png "http://127.0.0.1:4173/?vrproof=1"
-          test -s vr-proof.png
+
+          timeout 90s "$CHROME" --headless=new --no-sandbox --disable-dev-shm-usage --enable-unsafe-swiftshader \
+            --hide-scrollbars --window-size=1536,864 --virtual-time-budget=20000 \
+            --screenshot=vr-proof-one.png "http://127.0.0.1:4173/?vrproof=one"
+
+          timeout 90s "$CHROME" --headless=new --no-sandbox --disable-dev-shm-usage --enable-unsafe-swiftshader \
+            --hide-scrollbars --window-size=1536,864 --virtual-time-budget=20000 \
+            --screenshot=vr-proof-two.png "http://127.0.0.1:4173/?vrproof=two"
+
+          test -s vr-proof-one.png
+          test -s vr-proof-two.png
           kill "$PREVIEW_PID" || true
 
-      - name: Upload VR proof screenshot
-        if: always()
+      - name: Upload VR proof screenshots
         uses: actions/upload-artifact@v4
         with:
           name: vr-proof
           path: |
             vr-proof-one.png
             vr-proof-two.png
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 3
 
       - uses: actions/configure-pages@v5
