@@ -9,8 +9,8 @@ import {spawn,p,views,buildings,cathedral,roads,riverTraces} from './layout.js';
 import {createDungeonArea} from './dungeon/area.js';
 import {MAX_LEVEL} from './dungeon/generate.js';
 const $=id=>document.getElementById(id);
-const params=new URLSearchParams(location.search),review=params.has('review');
-let magic,swords,hp=100,hurtFlash=0,lastHurt=-99,hurtShell,renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
+const params=new URLSearchParams(location.search),review=params.has('review'),vrProof=params.has('vrproof');
+let magic,swords,vrProofHarness=null,hp=100,hurtFlash=0,lastHurt=-99,hurtShell,renderer,scene,townScene,camera,rig,hands,world,area,townArea,dungeonArea=null,fader,lantern,vrMap,vrMapTex,transition=null,session=null,started=false,moveSpeed=2.4,turnSpeed=65*Math.PI/180,yaw=0,pitch=0;
 let previousTime=0,elapsed=0,mapOpen=false,frames=0,frameTime=0,testWalk=0;
 const keys=new Set(),touchMove={x:0,y:0},direction=new THREE.Vector3(),head=new THREE.Vector3(),afterTurn=new THREE.Vector3();
 const vrVelocity=new THREE.Vector3(),vrTarget=new THREE.Vector3(),vrForward=new THREE.Vector3(),vrRight=new THREE.Vector3(),worldUp=new THREE.Vector3(0,1,0);
@@ -60,6 +60,7 @@ function init(){
  vrMap.position.set(0,-.07,-.5);vrMap.rotation.x=-.18;vrMap.renderOrder=999;vrMap.visible=false;camera.add(vrMap);
  const aspect=innerWidth/innerHeight;overheadCamera=new THREE.OrthographicCamera(-118*aspect,118*aspect,118,-118,.1,600);overheadCamera.position.set(135,170,135);overheadCamera.lookAt(0,0,0);
  setView('square');setupControls();
+ if(vrProof)import('./vr-proof.js').then(({createVRProof})=>{vrProofHarness=createVRProof({rig,camera,hands,swords});started=true;}).catch(showError);
  $('loading').hidden=true;$('welcome').hidden=false;
  if(review){window.__diab={hp:()=>hp,place:(x,z,y)=>placePlayer(x,z,y),look:v=>{pitch=v;},enter:t=>enterArea(t),area:()=>area};$('review').hidden=false;$('review-view').value=params.get('view')||'square';setView($('review-view').value);enterScreen();}
  renderer.setAnimationLoop(frame);probeVR();
@@ -187,7 +188,8 @@ function frame(ms,xrFrame){
  if(renderer.xr.isPresenting){vrMap.visible=mapHeld&&!transition;if(vrMap.visible&&frames%6===0){area.drawMap(vrMapTex.image.getContext('2d'),512,pos,playerYaw());vrMapTex.needsUpdate=true;}}else vrMap.visible=false;
  lantern.visible=area!==townArea;lantern.intensity=15*(1+Math.sin(elapsed*6.1)*.03);
  magic.update(dt,xrFrame);
- swords?.update(dt,area===townArea,renderer.xr.isPresenting);
+ vrProofHarness?.update(dt);
+ swords?.update(dt,area===townArea,renderer.xr.isPresenting||vrProof);
  hands?.update(dt);
  renderer.render(scene,cameraMode==='overhead'?overheadCamera:camera);
  frames++;frameTime+=Math.max(.001,(ms-(frame.lastMs||ms-16))/1000);frame.lastMs=ms;
