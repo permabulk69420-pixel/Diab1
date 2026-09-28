@@ -11,6 +11,7 @@ function setGrip(pad,value){
 }
 
 export function createVRProof({rig,camera,hands,swords}){
+  const mode=new URLSearchParams(location.search).get('vrproof')||'two';
   const rightPad=makePad(),leftPad=makePad();
   for(const object of [...hands.controllers,...hands.grips]){
     object.visible=true;
@@ -58,6 +59,14 @@ export function createVRProof({rig,camera,hands,swords}){
     // Stage 2: present the held sword in front of the proof camera.
     r.grip.position.set(.14,1.36,-1.15);
     setGrip(rightPad,1);
+
+    if(mode==='one'){
+      l.grip.position.set(-.28,1.08,-1.18);
+      setGrip(leftPad,0);
+      settled++;
+      if(settled>20)window.__vrProofReady=true;
+      return;
+    }
 
     if(!entry.supporter){
       // Bring the left controller onto the *actual* secondary handle point.
