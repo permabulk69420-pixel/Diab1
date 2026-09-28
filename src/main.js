@@ -189,8 +189,8 @@ function frame(ms,xrFrame){
  lantern.visible=area!==townArea;lantern.intensity=15*(1+Math.sin(elapsed*6.1)*.03);
  magic.update(dt,xrFrame);
  vrProofHarness?.update(dt);
- hands?.update(dt);
  swords?.update(dt,area===townArea,renderer.xr.isPresenting||vrProof);
+ hands?.update(dt);
  renderer.render(scene,cameraMode==='overhead'?overheadCamera:camera);
  frames++;frameTime+=Math.max(.001,(ms-(frame.lastMs||ms-16))/1000);frame.lastMs=ms;
  if(frames%20===0){
