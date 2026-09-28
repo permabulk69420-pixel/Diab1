@@ -1,6 +1,5 @@
 name: Deploy Diab1 to GitHub Pages
 
-
 on:
   push:
     branches: [main]
@@ -26,6 +25,28 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+
+      - name: Capture VR visual proof
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/diab1-preview.log 2>&1 &
+          PREVIEW_PID=$!
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:4173/ >/dev/null; then break; fi
+            sleep 1
+          done
+          CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
+          test -n "$CHROME"
+          "$CHROME" --headless=new --no-sandbox --disable-dev-shm-usage --enable-unsafe-swiftshader             --hide-scrollbars --window-size=1536,864 --virtual-time-budget=12000             --screenshot=vr-proof.png "http://127.0.0.1:4173/?vrproof=1"
+          test -s vr-proof.png
+          kill "$PREVIEW_PID" || true
+
+      - name: Upload VR proof screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: vr-proof
+          path: vr-proof.png
+          retention-days: 3
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
