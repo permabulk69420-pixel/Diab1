@@ -19,6 +19,7 @@ const weaponQuat=new THREE.Quaternion();
 const basis=new THREE.Matrix4();
 const rotatedPrimary=new THREE.Vector3();
 const LOCAL_Z=new THREE.Vector3(0,0,1);
+const ONE_HAND_QUAT=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.PI));
 
 function assetUrl(path){
   return new URL(path,document.baseURI).href;
@@ -107,8 +108,9 @@ export function createSwords({scene,hands,spawn,height,onError=console.warn}){
     const socket=state.objectGrip||state.grip;
     scene.attach(entry.model);
     socket.add(entry.model);
-    entry.model.quaternion.identity();
-    entry.model.position.copy(entry.primaryLocal).multiplyScalar(-1);
+    entry.model.quaternion.copy(ONE_HAND_QUAT);
+    rotatedPrimary.copy(entry.primaryLocal).applyQuaternion(ONE_HAND_QUAT);
+    entry.model.position.copy(rotatedPrimary).multiplyScalar(-1);
     entry.model.scale.set(1,1,1);
     entry.model.updateMatrixWorld(true);
     entry.holder=state;
