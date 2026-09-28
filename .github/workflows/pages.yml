@@ -45,7 +45,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vr-proof
-          path: vr-proof.png
+          path: |
+            vr-proof-one.png
+            vr-proof-two.png
           if-no-files-found: warn
           retention-days: 3
 
